@@ -1,0 +1,498 @@
+/* components/ChessBoard.module.css */
+
+/* ── 레이아웃 ── */
+.root {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 20px;
+  padding: 20px;
+  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+  background: #0f0f0f;
+  color: #e8e8e8;
+  min-height: 100vh;
+}
+
+@media (max-width: 768px) {
+  .root {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+}
+
+/* ── 보드 컬럼 ── */
+.boardCol {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.boardWrap {
+  width: 576px;
+  height: 576px;
+}
+
+/* ── 칸 ── */
+.square {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: filter 0.08s;
+}
+
+.square:hover {
+  filter: brightness(1.12);
+}
+
+.light {
+  background: #f0d9b5;
+}
+
+.dark {
+  background: #b58863;
+}
+
+.selected {
+  background: #f6f669 !important;
+}
+
+.lastMove {
+  background: #cdd26a !important;
+}
+
+.dark.lastMove {
+  background: #aaa23a !important;
+}
+
+.legalCapture {
+  outline: 3px solid rgba(0, 0, 0, 0.35);
+  outline-offset: -3px;
+}
+
+/* 이동 가능 점 */
+.legalDot {
+  width: 30%;
+  height: 30%;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+}
+
+
+/* ── Eval Bar ── */
+.evalWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.evalBar {
+  width: 14px;
+  height: 576px;
+  background: #1a1a1a;
+  border: 0.5px solid #333;
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.evalWhite {
+  background: #f0f0f0;
+  transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 0 0 3px 3px;
+}
+
+.evalLabel {
+  font-size: 10px;
+  color: #888;
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 640px) {
+  .evalBar {
+    height: 352px;
+  }
+}
+
+/* ── 상태 바 ── */
+.statusBar {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #666;
+  font-family: 'IBM Plex Mono', monospace;
+  padding-left: 22px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ── 라벨 뱃지 ── */
+.labelBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 0.5px solid;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 0.04em;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.analyzing {
+  color: #1D9E75;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.sfLoading {
+  color: #555;
+}
+
+/* ── 패널 ── */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  max-width: 340px;
+}
+
+/* ── 카드 ── */
+.card {
+  background: #161616;
+  border: 0.5px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.cardLabel {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #555;
+  margin-bottom: 8px;
+}
+
+/* ── 최선수 ── */
+.bestMove {
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: #e8e8e8;
+  margin-bottom: 10px;
+}
+
+.arrow {
+  color: #444;
+  margin: 0 4px;
+  font-size: 16px;
+}
+
+/* MultiPV 라인 */
+.lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  border-top: 0.5px solid #222;
+}
+
+.lineScore {
+  font-size: 11px;
+  font-weight: 500;
+  min-width: 36px;
+  color: #1D9E75;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.lineMoves {
+  font-size: 10px;
+  color: #555;
+  font-family: 'IBM Plex Mono', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── PGN ── */
+.pgnInput {
+  width: 100%;
+  background: #0a0a0a;
+  border: 0.5px solid #2a2a2a;
+  border-radius: 5px;
+  padding: 8px;
+  font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: #e8e8e8;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.pgnInput:focus {
+  border-color: #444;
+}
+
+.error {
+  font-size: 11px;
+  color: #e24b4a;
+  margin-top: 4px;
+}
+
+.btnRow {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.btn {
+  padding: 6px 14px;
+  font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace;
+  border: 0.5px solid #333;
+  border-radius: 5px;
+  background: transparent;
+  color: #aaa;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.btn:hover {
+  background: #1e1e1e;
+  color: #e8e8e8;
+}
+
+.btnPrimary {
+  composes: btn;
+  background: #e8e8e8;
+  color: #0f0f0f;
+  border-color: #e8e8e8;
+  font-weight: 500;
+}
+
+.btnPrimary:hover {
+  background: #ffffff;
+  color: #0f0f0f;
+}
+
+/* ── 수준 토글 ── */
+.levelToggle {
+  display: flex;
+  gap: 0;
+  border: 0.5px solid #2a2a2a;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.levelBtn {
+  flex: 1;
+  padding: 7px;
+  font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace;
+  background: transparent;
+  border: none;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.levelBtn:hover {
+  color: #aaa;
+}
+
+.levelActive {
+  background: #1e1e1e;
+  color: #e8e8e8;
+}
+
+/* ── 수순 테이블 ── */
+.moveTable {
+  display: flex;
+  flex-direction: column;
+  max-height: 160px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #333 transparent;
+  gap: 1px;
+}
+
+.moveRow {
+  display: grid;
+  grid-template-columns: 20px 1fr 1fr;
+  align-items: center;
+  gap: 2px;
+  border-radius: 3px;
+}
+
+.moveRow:nth-child(odd) {
+  background: #111;
+}
+
+.moveNum {
+  font-size: 10px;
+  color: #444;
+  text-align: right;
+  padding-right: 4px;
+  font-family: 'IBM Plex Mono', monospace;
+  user-select: none;
+}
+
+.moveCell {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.moveCell:hover:not(:disabled) {
+  background: #1e1e1e;
+}
+
+.moveCell:disabled {
+  cursor: default;
+}
+
+.moveCellEmpty {
+  pointer-events: none;
+}
+
+.moveSan {
+  font-size: 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: #aaa;
+}
+
+.moveSymbol {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.moveActive .moveSan {
+  color: #fff;
+}
+
+.moveActive {
+  background: #1D9E75 !important;
+}
+
+.movePlaceholder {
+  font-size: 11px;
+  color: #444;
+  font-style: italic;
+}
+
+/* ── AI 해설 ── */
+.aiBox {
+  background: #161616;
+  border: 0.5px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 12px 14px;
+  flex: 1;
+  min-height: 120px;
+}
+
+.aiHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.explainBtn {
+  margin-left: auto;
+  padding: 4px 10px;
+  font-size: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  border: 0.5px solid #1D9E75;
+  border-radius: 4px;
+  background: transparent;
+  color: #1D9E75;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.explainBtn:hover {
+  background: #1D9E75;
+  color: #0f0f0f;
+}
+
+.explainBtnSmall {
+  composes: explainBtn;
+  padding: 2px 7px;
+  font-size: 9px;
+  opacity: 0.6;
+}
+
+.aiDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #1D9E75;
+}
+
+.aiDotPulse {
+  animation: pulse 1.2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(0.85); }
+}
+
+.aiLabel {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #555;
+}
+
+.aiDepth {
+  font-size: 9px;
+  color: #444;
+  margin-left: auto;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.aiText {
+  font-size: 13px;
+  line-height: 1.8;
+  color: #c8c8c8;
+  font-family: 'Crimson Pro', Georgia, serif;
+  white-space: pre-wrap;
+}
+
+.aiPlaceholder {
+  color: #444;
+  font-style: italic;
+  font-family: 'Crimson Pro', Georgia, serif;
+}

@@ -1,0 +1,272 @@
+/* components/GameReview.module.css */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+  color: #e8e8e8;
+}
+
+/* ── 정확도 ── */
+.accuracyRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+  background: #161616;
+  border: 0.5px solid #2a2a2a;
+  border-radius: 8px;
+}
+
+.accuracyDivider {
+  width: 0.5px;
+  height: 48px;
+  background: #2a2a2a;
+  flex-shrink: 0;
+}
+
+.ring {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.ringLabel {
+  font-size: 10px;
+  color: #666;
+  letter-spacing: 0.06em;
+}
+
+/* ── 요약 ── */
+.summaryRow2 {
+  display: grid;
+  grid-template-columns: 1fr 0.5px 1fr;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #161616;
+  border: 0.5px solid #2a2a2a;
+  border-radius: 8px;
+}
+
+.summaryDivider {
+  background: #2a2a2a;
+}
+
+.sideLabel {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #555;
+  margin-bottom: 6px;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.summaryRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.summarySymbol {
+  font-size: 11px;
+  min-width: 16px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.summaryKo {
+  font-size: 11px;
+  color: #666;
+  flex: 1;
+}
+
+.summaryCount {
+  font-size: 12px;
+  font-weight: 500;
+  min-width: 20px;
+  text-align: right;
+}
+
+/* ── 수순 목록 ── */
+.moveTable {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: #161616;
+  border: 0.5px solid #2a2a2a;
+  border-radius: 8px;
+  overflow: hidden;
+  max-height: 320px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #333 transparent;
+}
+
+.movePair {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-bottom: 0.5px solid #1a1a1a;
+}
+
+.movePair:last-child {
+  border-bottom: none;
+}
+
+.moveNum {
+  font-size: 10px;
+  color: #444;
+  min-width: 32px;
+  text-align: right;
+  padding: 0 8px 0 10px;
+  flex-shrink: 0;
+}
+
+.moveBtn {
+  flex: 1;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-left: 0px solid transparent;
+  color: #aaa;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.08s, color 0.08s;
+}
+
+.moveBtn:hover {
+  background: #1e1e1e;
+  color: #e8e8e8;
+}
+
+.moveBtnActive {
+  background: #1e1e1e !important;
+  color: #e8e8e8 !important;
+}
+
+/* ── 라벨 배지 ── */
+.badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 0.5px solid;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+/* ── AI 해설 박스 ── */
+.explainBox {
+  padding: 12px 14px;
+  background: #161616;
+  border: 0.5px solid #2a2a2a;
+  border-left: 3px solid;
+  border-radius: 0 8px 8px 0;
+  animation: slideIn 0.2s ease;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.explainHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.explainLabel {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+
+.evalLoss {
+  font-size: 10px;
+  color: #555;
+  margin-left: auto;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #1D9E75;
+  animation: pulse 1.2s infinite;
+  flex-shrink: 0;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+.explainText {
+  font-size: 13px;
+  line-height: 1.8;
+  color: #c8c8c8;
+  font-family: 'Crimson Pro', Georgia, serif;
+  white-space: pre-wrap;
+}
+
+.explainPlaceholder {
+  color: #444;
+  font-style: italic;
+}
+
+/* ── 간단 정보 ── */
+.simpleInfo {
+  font-size: 12px;
+  color: #555;
+  padding: 8px 12px;
+  background: #161616;
+  border: 0.5px solid #2a2a2a;
+  border-radius: 6px;
+}
+
+/* ── 로딩 ── */
+.loadingWrap {
+  padding: 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.loadingBar {
+  height: 3px;
+  background: #222;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.loadingFill {
+  height: 100%;
+  background: #1D9E75;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.loadingText {
+  font-size: 11px;
+  color: #555;
+  text-align: center;
+}
