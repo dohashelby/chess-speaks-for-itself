@@ -8,6 +8,15 @@ import { classifyMove, MoveLabel, LABEL_META } from '@/lib/moveClassifier';
 import { useOpeningBook, BookLogEntry } from '@/lib/useOpeningBook';
 import styles from './ChessBoard.module.css';
 
+interface ClassifyLogEntry {
+  moveIdx: number;
+  played: string;
+  label: MoveLabel;
+  reason: string;
+  debug: Record<string, number | string | boolean>;
+  timestamp: number;
+}
+
 // ── Eval Bar ──────────────────────────────────────────────
 function EvalBar({ value, mate }: { value: number; mate: number | null }) {
   const clamp = Math.min(45, Math.max(-45, value * 6));
@@ -189,22 +198,26 @@ function MoveList({
 function DebugPanel({
   sfLogRef,
   bookLogRef,
+  classifyLogRef,
 }: {
   sfLogRef: React.RefObject<string[]>;
   bookLogRef: React.RefObject<BookLogEntry[]>;
+  classifyLogRef: React.RefObject<ClassifyLogEntry[]>;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [sfLog, setSfLog] = useState<string[]>([]);
   const [bookLog, setBookLog] = useState<BookLogEntry[]>([]);
-  const [tab, setTab] = useState<'sf' | 'book'>('sf');
+  const [classifyLog, setClassifyLog] = useState<ClassifyLogEntry[]>([]);
+  const [tab, setTab] = useState<'sf' | 'classify' | 'book'>('classify');
 
   useEffect(() => {
     const id = setInterval(() => {
       if (sfLogRef.current) setSfLog([...sfLogRef.current]);
       if (bookLogRef.current) setBookLog([...bookLogRef.current]);
+      if (classifyLogRef.current) setClassifyLog([...classifyLogRef.current]);
     }, 200);
     return () => clearInterval(id);
-  }, [sfLogRef, bookLogRef]);
+  }, [sfLogRef, bookLogRef, classifyLogRef]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -225,6 +238,12 @@ function DebugPanel({
           onClick={() => setTab('book')}
         >
           BOOK <span className={styles.debugCount}>{bookLog.length}</span>
+        </button>
+        <button
+          className={`${styles.debugTab} ${tab === 'classify' ? styles.debugTabActive : ''}`}
+          onClick={() => setTab('classify')}
+        >
+          CLASSIFY <span className={styles.debugCount}>{classifyLog.length}</span>
         </button>
       </div>
       <div className={styles.debugBody}>
@@ -263,6 +282,25 @@ function DebugPanel({
                 </span>
               ))}
               {entry.moves.length === 0 && <span className={styles.debugInfo}>no master games</span>}
+            </div>
+          </div>
+        ))}
+        {tab === 'classify' && classifyLog.map((entry, i) => (
+          <div key={i} className={styles.debugBookEntry}>
+            <div className={styles.debugBookHeader}>
+              <span className={styles.debugClassifyLabel} style={{ color: LABEL_META[entry.label].color }}>
+                {LABEL_META[entry.label].symbol} {LABEL_META[entry.label].ko}
+              </span>
+              <span className={styles.debugBookGames}>#{entry.moveIdx + 1} {entry.played}</span>
+            </div>
+            <div className={styles.debugClassifyReason}>{entry.reason}</div>
+            <div className={styles.debugClassifyDebug}>
+              {Object.entries(entry.debug).map(([k, v]) => (
+                <span key={k} className={styles.debugClassifyKV}>
+                  <span className={styles.debugClassifyKey}>{k}</span>
+                  <span className={styles.debugClassifyVal}>{String(v)}</span>
+                </span>
+              ))}
             </div>
           </div>
         ))}
@@ -316,6 +354,7 @@ export default function ChessBoard({
   const [aiLastMoveSan, setAiLastMoveSan] = useState('');
 
   const pendingRef = useRef<PendingClassify | null>(null);
+  const classifyLogRef = useRef<ClassifyLogEntry[]>([]);
   const { result: sfResult, isReady, isAnalyzing, evaluate, stop, rawLogRef } = useStockfish();
   const { isBookMove, bookLogRef } = useOpeningBook();
 
@@ -335,7 +374,7 @@ export default function ChessBoard({
     const classify = async () => {
       const book = await isBookMove(pending.fenBefore, pending.playedUci);
 
-      const { label } = classifyMove({
+      const result = classifyMove({
         eval_before: pending.evalBefore,
         eval_after: sfResult.eval,
         best_eval: pending.bestEval,
@@ -348,10 +387,22 @@ export default function ChessBoard({
         is_book: book,
       });
 
-      setCurrentLabel(label);
+      // 분류 로그
+      const log = classifyLogRef.current;
+      log.push({
+        moveIdx: pending.moveIdx,
+        played: pending.playedUci,
+        label: result.label,
+        reason: result.reason,
+        debug: result.debug,
+        timestamp: Date.now(),
+      });
+      if (log.length > 50) log.splice(0, log.length - 50);
+
+      setCurrentLabel(result.label);
       setMoveLabels(prev => {
         const next = [...prev];
-        next[pending.moveIdx] = label;
+        next[pending.moveIdx] = result.label;
         return next;
       });
     };
@@ -379,11 +430,23 @@ export default function ChessBoard({
     const move = g.move({ from, to, promotion: 'q' });
     if (!move) return false;
 
-    // 희생수 판별: 기물 가치상 손해처럼 보이는 캡처
+    // 희생수 판별:
+    // 1) 캡처 희생: 비싼 기물로 싼 기물을 잡음 (퀸으로 폰 잡기 등)
+    // 2) Non-capture 희생: 기물을 상대가 잡을 수 있는 칸에 놓음
+    //    (나이트를 적진에 던지기, 비숍을 걸기 등)
+    // 실제로 좋은 희생인지는 Stockfish eval이 판단 (brilliant 조건에서 체크)
     const isCapture = move.flags.includes('c') || move.flags.includes('e');
     const movedValue = PIECE_VALUE[move.piece] ?? 0;
     const capturedValue = PIECE_VALUE[move.captured ?? ''] ?? 0;
-    const isSacrifice = isCapture && movedValue > capturedValue;
+    const captureSacrifice = isCapture && movedValue > capturedValue;
+
+    // g는 이미 수를 둔 후 상태 (상대 차례)
+    // 상대의 합법수 중 방금 둔 칸을 잡는 수가 있으면 기물이 위험
+    const isHanging = movedValue >= 3 &&
+      g.moves({ verbose: true }).some(m => m.to === move.to);
+    const nonCaptureSacrifice = !isCapture && isHanging;
+
+    const isSacrifice = captureSacrifice || nonCaptureSacrifice;
 
     const newFen = g.fen();
     const newFenHist = fenHistory.slice(0, currentIdx + 1).concat(newFen);
@@ -642,7 +705,7 @@ export default function ChessBoard({
         />
       </div>
 
-      <DebugPanel sfLogRef={rawLogRef} bookLogRef={bookLogRef} />
+      <DebugPanel sfLogRef={rawLogRef} bookLogRef={bookLogRef} classifyLogRef={classifyLogRef} />
     </div>
   );
 }
