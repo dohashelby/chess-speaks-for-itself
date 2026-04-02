@@ -3,7 +3,7 @@
 
 import { useCallback, useRef } from 'react';
 
-interface ExplorerMove {
+export interface ExplorerMove {
   uci: string;
   san: string;
   white: number;
@@ -11,61 +11,49 @@ interface ExplorerMove {
   black: number;
 }
 
-interface ExplorerResponse {
+export interface ExplorerResponse {
   white: number;
   draws: number;
   black: number;
   moves: ExplorerMove[];
 }
 
-const EXPLORER_URL = 'https://explorer.lichess.ovh/masters';
-const MIN_GAMES = 5; // 최소 마스터 게임 수
+export interface BookLogEntry {
+  fen: string;
+  totalGames: number;
+  moves: { san: string; uci: string; games: number; isBook: boolean }[];
+  playedUci: string | null;
+  isBook: boolean;
+  timestamp: number;
+}
 
-// 모듈 레벨 캐시 (컴포넌트 리렌더와 무관하게 유지)
-const cache = new Map<string, Set<string>>();
+const EXPLORER_URL = '/api/opening';
+const MIN_GAMES = 5;
+
+const cache = new Map<string, ExplorerResponse | null>();
 
 export function useOpeningBook() {
-  const pendingRef = useRef<Map<string, Promise<Set<string>>>>(new Map());
+  const pendingRef = useRef<Map<string, Promise<ExplorerResponse | null>>>(new Map());
+  const logRef = useRef<BookLogEntry[]>([]);
 
-  const fetchBookMoves = useCallback(async (fen: string): Promise<Set<string>> => {
-    // 캐시 히트
+  const fetchExplorer = useCallback(async (fen: string): Promise<ExplorerResponse | null> => {
     if (cache.has(fen)) return cache.get(fen)!;
-
-    // 중복 요청 방지
     if (pendingRef.current.has(fen)) return pendingRef.current.get(fen)!;
 
     const promise = (async () => {
       try {
-        const params = new URLSearchParams({ fen, moves: '12' });
-        const res = await fetch(`${EXPLORER_URL}?${params}`, {
-          headers: { 'Accept': 'application/json' },
-        });
+        const params = new URLSearchParams({ fen });
+        const res = await fetch(`${EXPLORER_URL}?${params}`);
         if (!res.ok) {
-          cache.set(fen, new Set());
-          return new Set<string>();
+          cache.set(fen, null);
+          return null;
         }
         const data: ExplorerResponse = await res.json();
-        const totalGames = data.white + data.draws + data.black;
-
-        // 이 포지션 자체가 마스터 게임에 없으면 빈 Set
-        if (totalGames < MIN_GAMES) {
-          cache.set(fen, new Set());
-          return new Set<string>();
-        }
-
-        // 충분한 게임 수를 가진 수만 book move로 인정
-        const bookUcis = new Set<string>();
-        for (const m of data.moves) {
-          const games = m.white + m.draws + m.black;
-          if (games >= MIN_GAMES) {
-            bookUcis.add(m.uci);
-          }
-        }
-        cache.set(fen, bookUcis);
-        return bookUcis;
+        cache.set(fen, data);
+        return data;
       } catch {
-        cache.set(fen, new Set());
-        return new Set<string>();
+        cache.set(fen, null);
+        return null;
       } finally {
         pendingRef.current.delete(fen);
       }
@@ -75,11 +63,33 @@ export function useOpeningBook() {
     return promise;
   }, []);
 
-  // 특정 FEN에서 특정 수가 book move인지 확인
   const isBookMove = useCallback(async (fen: string, uci: string): Promise<boolean> => {
-    const bookMoves = await fetchBookMoves(fen);
-    return bookMoves.has(uci);
-  }, [fetchBookMoves]);
+    const data = await fetchExplorer(fen);
+    const totalGames = data ? data.white + data.draws + data.black : 0;
 
-  return { isBookMove, fetchBookMoves };
+    const moves = (data?.moves ?? []).map(m => {
+      const games = m.white + m.draws + m.black;
+      return { san: m.san, uci: m.uci, games, isBook: games >= MIN_GAMES };
+    });
+
+    const isBook = totalGames >= MIN_GAMES &&
+      moves.some(m => m.uci === uci && m.isBook);
+
+    // 로그 추가
+    const entry: BookLogEntry = {
+      fen,
+      totalGames,
+      moves: moves.slice(0, 8), // 상위 8개만
+      playedUci: uci,
+      isBook,
+      timestamp: Date.now(),
+    };
+    const log = logRef.current;
+    log.push(entry);
+    if (log.length > 50) log.splice(0, log.length - 50);
+
+    return isBook;
+  }, [fetchExplorer]);
+
+  return { isBookMove, fetchExplorer, bookLogRef: logRef };
 }

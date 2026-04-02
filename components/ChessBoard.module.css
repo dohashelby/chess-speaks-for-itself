@@ -101,6 +101,100 @@
   color: #6a6a6a;
 }
 
+/* 디버그 탭 */
+.debugTab {
+  padding: 4px 8px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  font-family: 'IBM Plex Mono', monospace;
+  background: transparent;
+  border: none;
+  color: #444;
+  cursor: pointer;
+  transition: color 0.1s;
+}
+
+.debugTab:hover {
+  color: #888;
+}
+
+.debugTabActive {
+  color: #e8e8e8;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+/* Book 로그 */
+.debugBookEntry {
+  padding: 8px 12px;
+  border-bottom: 0.5px solid #1a1a1a;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.debugBookEntry:hover {
+  background: #111;
+}
+
+.debugBookHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.debugBookMatch {
+  font-size: 10px;
+  font-weight: 600;
+  color: #a08060;
+}
+
+.debugBookMiss {
+  font-size: 10px;
+  color: #444;
+}
+
+.debugBookGames {
+  font-size: 9px;
+  color: #444;
+  margin-left: auto;
+}
+
+.debugBookFen {
+  font-size: 9px;
+  color: #333;
+  margin-bottom: 2px;
+}
+
+.debugBookPlayed {
+  font-size: 10px;
+  color: #555;
+  margin-bottom: 4px;
+}
+
+.debugBookMoves {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.debugBookMove {
+  font-size: 9px;
+  color: #555;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: #141414;
+}
+
+.debugBookMovePlayed {
+  color: #a08060;
+  background: #1e1810;
+  border: 0.5px solid #a0806044;
+}
+
+.debugBookMoveGames {
+  color: #333;
+  font-size: 8px;
+}
+
 /* ── 보드 컬럼 ── */
 .boardCol {
   display: flex;
