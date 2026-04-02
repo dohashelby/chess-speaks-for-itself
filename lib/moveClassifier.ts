@@ -14,8 +14,8 @@ export type MoveLabel =
   | 'excellent'   // 우수   ○
   | 'good'        // 양호   (무라벨)
   | 'book'        // 이론수 📖
-  | 'inaccuracy'  // 부정확 ?
-  | 'mistake'     // 실수   ?!
+  | 'inaccuracy'  // 부정확 ?!
+  | 'mistake'     // 실수   ?
   | 'blunder'     // 블런더 ??
   | 'miss'        // 見落   ✗
   | 'forced'      // 강제수 (합법수 1개)
@@ -103,11 +103,6 @@ export function classifyMove(params: {
     is_book = false,
     only_move_margin = 0.5,
   } = params;
-
-  // ── 이론수 ────────────────────────────────────────────
-  if (is_book) {
-    return { label: 'book', eval_loss: 0, is_only_move: false, reason: 'Lichess masters DB에 등록된 이론수', debug: { is_book } };
-  }
 
   // ── 강제수 (합법수 1개) ───────────────────────────────
   if (legal_move_count === 1) {
@@ -198,7 +193,7 @@ export function classifyMove(params: {
     if (lineGap >= 0.3) {
       return { label: 'best', eval_loss: 0, is_only_move: false, reason: `최선수, 라인격차 ${lineGap.toFixed(2)} ≥ 0.3 (찾기 어려운 수)`, debug: d };
     }
-    return { label: 'good', eval_loss: 0, is_only_move: false, reason: `최선수이지만 라인격차 ${lineGap.toFixed(2)} < 0.3 (뻔한 수)`, debug: d };
+    return bookOrLabel('good', 0, `최선수이지만 라인격차 ${lineGap.toFixed(2)} < 0.3 (뻔한 수)`);
   }
 
   // ── 승률 drop 기반 분류 ───────────────────────────────
@@ -206,13 +201,22 @@ export function classifyMove(params: {
     if (lineGap >= 0.2) {
       return { label: 'excellent', eval_loss: loss, is_only_move: false, reason: `wpDrop ${wpDrop.toFixed(2)}% < 2%, 라인격차 ${lineGap.toFixed(2)} ≥ 0.2`, debug: d };
     }
-    return { label: 'good', eval_loss: loss, is_only_move: false, reason: `wpDrop ${wpDrop.toFixed(2)}% < 2%, 라인격차 ${lineGap.toFixed(2)} < 0.2`, debug: d };
+    return bookOrLabel('good', loss, `wpDrop ${wpDrop.toFixed(2)}% < 2%, 라인격차 ${lineGap.toFixed(2)} < 0.2`);
   }
-  if (wpDrop < 5)  return { label: 'good',       eval_loss: loss, is_only_move: false, reason: `wpDrop ${wpDrop.toFixed(2)}% < 5%`, debug: d };
+  if (wpDrop < 5)  return bookOrLabel('good',       loss, `wpDrop ${wpDrop.toFixed(2)}% < 5%`);
   if (wpDrop < 10) return { label: 'inaccuracy', eval_loss: loss, is_only_move: false, reason: `wpDrop ${wpDrop.toFixed(2)}% (5~10%)`, debug: d };
   if (wpDrop < 20) return { label: 'mistake',    eval_loss: loss, is_only_move: false, reason: `wpDrop ${wpDrop.toFixed(2)}% (10~20%)`, debug: d };
   if (isHopeless)  return { label: 'mistake',    eval_loss: loss, is_only_move: false, reason: `wpDrop ${wpDrop.toFixed(2)}% ≥ 20%이지만 절망적 포지션(wp ${wpBefore.toFixed(0)}% < 30%)`, debug: d };
   return { label: 'blunder', eval_loss: loss, is_only_move: false, reason: `wpDrop ${wpDrop.toFixed(2)}% ≥ 20%`, debug: d };
+
+  // 이론수 판별: 품질이 good 이상이고 masters DB에 있으면 book으로 표시
+  // 나쁜 수는 DB에 있어도 inaccuracy/mistake/blunder 유지
+  function bookOrLabel(label: MoveLabel, evalLoss: number, reason: string) {
+    if (is_book) {
+      return { label: 'book' as MoveLabel, eval_loss: evalLoss, is_only_move: false, reason: `이론수 (${reason})`, debug: { ...d, is_book } };
+    }
+    return { label, eval_loss: evalLoss, is_only_move: false, reason, debug: d };
+  }
 }
 
 // ── 정확도 계산 (Lichess 표준) ──────────────────────────────
@@ -252,8 +256,8 @@ export const LABEL_META: Record<MoveLabel, {
   good:       { ko: '양호',   symbol: '',    color: '#888',    bg: 'transparent', priority: 7 },
   book:       { ko: '이론수', symbol: '📖',  color: '#a08060', bg: '#2a2010', priority: 8 },
   forced:     { ko: '강제수', symbol: '—',   color: '#666',    bg: 'transparent', priority: 8 },
-  inaccuracy: { ko: '부정확', symbol: '?',   color: '#f0c040', bg: '#3a2d00', priority: 4 },
-  mistake:    { ko: '실수',   symbol: '?!',  color: '#e07000', bg: '#3a1c00', priority: 3 },
+  inaccuracy: { ko: '부정확', symbol: '?!',  color: '#f0c040', bg: '#3a2d00', priority: 4 },
+  mistake:    { ko: '실수',   symbol: '?',   color: '#e07000', bg: '#3a1c00', priority: 3 },
   blunder:    { ko: '블런더', symbol: '??',  color: '#e04040', bg: '#3a0000', priority: 2 },
   miss:       { ko: '見落',   symbol: '✗',   color: '#e04040', bg: '#3a0000', priority: 2 },
 };
