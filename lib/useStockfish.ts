@@ -22,6 +22,7 @@ interface UseStockfishReturn {
   isAnalyzing: boolean;
   evaluate: (fen: string, depth?: number) => void;
   stop: () => void;
+  rawLogRef: React.RefObject<string[]>;
 }
 
 export function useStockfish(): UseStockfishReturn {
@@ -30,6 +31,7 @@ export function useStockfish(): UseStockfishReturn {
   const [isReady, setIsReady] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
+  const rawLogRef = useRef<string[]>([]);
   const linesBuffer = useRef<Map<number, SFLine>>(new Map());
   const depthRef = useRef(0);
   const currentFenRef = useRef('');
@@ -45,6 +47,10 @@ export function useStockfish(): UseStockfishReturn {
     worker.onmessage = (e: MessageEvent) => {
       const { type, data } = e.data as { type: string; data: string };
       if (type !== 'sf_output') return;
+
+      const log = rawLogRef.current;
+      log.push(data);
+      if (log.length > 200) log.splice(0, log.length - 200);
 
       if (data === 'readyok') {
         setIsReady(true);
@@ -128,5 +134,5 @@ export function useStockfish(): UseStockfishReturn {
     setIsAnalyzing(false);
   }, []);
 
-  return { result, isReady, isAnalyzing, evaluate, stop };
+  return { result, isReady, isAnalyzing, evaluate, stop, rawLogRef };
 }

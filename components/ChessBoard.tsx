@@ -5,6 +5,7 @@ import { Chess, Square } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import { useStockfish, SFResult } from '@/lib/useStockfish';
 import { classifyMove, MoveLabel, LABEL_META } from '@/lib/moveClassifier';
+import { useOpeningBook } from '@/lib/useOpeningBook';
 import styles from './ChessBoard.module.css';
 
 // ── Eval Bar ──────────────────────────────────────────────
@@ -184,6 +185,50 @@ function MoveList({
   );
 }
 
+// ── SF 디버그 패널 ────────────────────────────────────────
+function SFDebugPanel({ logRef }: { logRef: React.RefObject<string[]> }) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const [log, setLog] = useState<string[]>([]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const current = logRef.current;
+      if (current) setLog([...current]);
+    }, 200);
+    return () => clearInterval(id);
+  }, [logRef]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [log.length]);
+
+  return (
+    <div className={styles.debugPanel}>
+      <div className={styles.debugHeader}>
+        <span className={styles.debugDot} />
+        <span className={styles.debugTitle}>SF RAW LOG</span>
+        <span className={styles.debugCount}>{log.length} lines</span>
+      </div>
+      <div className={styles.debugBody}>
+        {log.map((line, i) => (
+          <div
+            key={i}
+            className={`${styles.debugLine} ${
+              line.startsWith('bestmove') ? styles.debugBest :
+              line.startsWith('info') && line.includes('score') ? styles.debugInfo :
+              ''
+            }`}
+          >
+            <span className={styles.debugIdx}>{i}</span>
+            {line}
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+    </div>
+  );
+}
+
 // ── 메인 컴포넌트 ──────────────────────────────────────────
 export interface ChessBoardProps {
   initialFen?: string;
@@ -194,10 +239,13 @@ export interface ChessBoardProps {
 
 interface PendingClassify {
   evalBefore: number;
+  bestEval: number;
   bestUci: string;
   playedUci: string;
+  fenBefore: string;
   turn: 'w' | 'b';
   isSacrifice: boolean;
+  legalMoveCount: number;
   moveIdx: number;
 }
 
@@ -225,7 +273,8 @@ export default function ChessBoard({
   const [aiLastMoveSan, setAiLastMoveSan] = useState('');
 
   const pendingRef = useRef<PendingClassify | null>(null);
-  const { result: sfResult, isReady, isAnalyzing, evaluate, stop } = useStockfish();
+  const { result: sfResult, isReady, isAnalyzing, evaluate, stop, rawLogRef } = useStockfish();
+  const { isBookMove } = useOpeningBook();
 
   // Stockfish 준비되면 현재 포지션 즉시 분석 (첫 수 전 baseline 확보)
   useEffect(() => {
@@ -234,30 +283,38 @@ export default function ChessBoard({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady]);
 
-  // SF 결과가 오면 라벨 분류
+  // SF 결과가 오면 라벨 분류 (book move 체크 포함)
   useEffect(() => {
     const pending = pendingRef.current;
     if (!pending || !sfResult) return;
     pendingRef.current = null;
 
-    const { label } = classifyMove({
-      eval_before: pending.evalBefore,
-      eval_after: sfResult.eval,
-      best_eval: pending.evalBefore,
-      played_uci: pending.playedUci,
-      best_uci: pending.bestUci,
-      turn: pending.turn,
-      is_sacrifice: pending.isSacrifice,
-      top_lines: sfResult.lines,
-    });
+    const classify = async () => {
+      const book = await isBookMove(pending.fenBefore, pending.playedUci);
 
-    setCurrentLabel(label);
-    setMoveLabels(prev => {
-      const next = [...prev];
-      next[pending.moveIdx] = label;
-      return next;
-    });
-  }, [sfResult]);
+      const { label } = classifyMove({
+        eval_before: pending.evalBefore,
+        eval_after: sfResult.eval,
+        best_eval: pending.bestEval,
+        played_uci: pending.playedUci,
+        best_uci: pending.bestUci,
+        turn: pending.turn,
+        is_sacrifice: pending.isSacrifice,
+        top_lines: sfResult.lines,
+        legal_move_count: pending.legalMoveCount,
+        is_book: book,
+      });
+
+      setCurrentLabel(label);
+      setMoveLabels(prev => {
+        const next = [...prev];
+        next[pending.moveIdx] = label;
+        return next;
+      });
+    };
+
+    classify();
+  }, [sfResult, isBookMove]);
 
   // ── 이동 실행 (클릭/드래그 공통) ──
   const makeMove = useCallback((from: Square, to: Square): boolean => {
@@ -266,14 +323,24 @@ export default function ChessBoard({
     const sfForPos = sfResult?.fen === g.fen() ? sfResult : null;
     const evalBefore = sfForPos?.eval ?? 0;
     const bestUci = sfForPos?.bestMove ?? '';
+    // best_eval: SF 1순위 라인의 eval (백 시점, 폰 단위)
+    const bestEval = sfForPos
+      ? (sfForPos.lines[0]?.mate != null
+          ? (sfForPos.lines[0].mate > 0 ? 99 : -99)
+          : (sfForPos.lines[0]?.cp ?? 0) / 100)
+      : evalBefore;
     const turn = g.turn();
+    const legalMoveCount = g.moves().length;
+    const fenBefore = g.fen();
 
     const move = g.move({ from, to, promotion: 'q' });
     if (!move) return false;
 
+    // 희생수 판별: 기물 가치상 손해처럼 보이는 캡처
     const isCapture = move.flags.includes('c') || move.flags.includes('e');
-    const isSacrifice = isCapture &&
-      (PIECE_VALUE[move.piece] ?? 0) > (PIECE_VALUE[move.captured ?? ''] ?? 0);
+    const movedValue = PIECE_VALUE[move.piece] ?? 0;
+    const capturedValue = PIECE_VALUE[move.captured ?? ''] ?? 0;
+    const isSacrifice = isCapture && movedValue > capturedValue;
 
     const newFen = g.fen();
     const newFenHist = fenHistory.slice(0, currentIdx + 1).concat(newFen);
@@ -282,10 +349,13 @@ export default function ChessBoard({
 
     pendingRef.current = {
       evalBefore,
+      bestEval,
       bestUci,
       playedUci: `${move.from}${move.to}${move.promotion ?? ''}`,
+      fenBefore,
       turn,
       isSacrifice,
+      legalMoveCount,
       moveIdx,
     };
 
@@ -417,32 +487,34 @@ export default function ChessBoard({
   return (
     <div className={styles.root}>
       <div className={styles.boardCol}>
-        <EvalBar value={sfResult?.eval ?? 0} mate={sfResult?.mate ?? null} />
-        {/* data-square 속성 이벤트 델리게이션으로 dnd-kit 우회 */}
-        <div
-          className={styles.boardWrap}
-          onClick={(e) => {
-            const el = (e.target as HTMLElement).closest('[data-square]');
-            if (el) handleSquareClick(el.getAttribute('data-square') as Square);
-          }}
-        >
-          <Chessboard
-            options={{
-              position: fen,
-              onPieceDrop: handlePieceDrop,
-              squareStyles,
-              boardOrientation: flipped ? 'black' : 'white',
-              allowDrawingArrows: false,
-              boardStyle: {
-                borderRadius: '4px',
-                boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
-                width: '576px',
-                height: '576px',
-              },
-              lightSquareStyle: { backgroundColor: '#f0d9b5' },
-              darkSquareStyle: { backgroundColor: '#b58863' },
+        <div className={styles.boardRow}>
+          <EvalBar value={sfResult?.eval ?? 0} mate={sfResult?.mate ?? null} />
+          {/* data-square 속성 이벤트 델리게이션으로 dnd-kit 우회 */}
+          <div
+            className={styles.boardWrap}
+            onClick={(e) => {
+              const el = (e.target as HTMLElement).closest('[data-square]');
+              if (el) handleSquareClick(el.getAttribute('data-square') as Square);
             }}
-          />
+          >
+            <Chessboard
+              options={{
+                position: fen,
+                onPieceDrop: handlePieceDrop,
+                squareStyles,
+                boardOrientation: flipped ? 'black' : 'white',
+                allowDrawingArrows: false,
+                boardStyle: {
+                  borderRadius: '4px',
+                  boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
+                  width: '100%',
+                  height: '100%',
+                },
+                lightSquareStyle: { backgroundColor: '#f0d9b5' },
+                darkSquareStyle: { backgroundColor: '#b58863' },
+              }}
+            />
+          </div>
         </div>
         <div className={styles.statusBar}>
           <span>
@@ -526,6 +598,8 @@ export default function ChessBoard({
           level={currentLevel}
         />
       </div>
+
+      <SFDebugPanel logRef={rawLogRef} />
     </div>
   );
 }

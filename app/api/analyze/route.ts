@@ -1,10 +1,31 @@
 // app/api/analyze/route.ts  (라벨 인식 버전)
 // label 파라미터를 받아 프롬프트 톤을 자동 조정
+// LLM_PROVIDER 환경 변수로 anthropic / openai / gemini 선택
 
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { MoveLabel } from '@/lib/moveClassifier';
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// ── Provider 설정 ────────────────────────────────────────────
+type Provider = 'anthropic' | 'openai' | 'gemini';
+
+const LLM_PROVIDER = (process.env.LLM_PROVIDER ?? 'anthropic') as Provider;
+
+function getAnthropicClient() {
+  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+}
+
+function getOpenAIClient() {
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
+
+function getGeminiModel() {
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '');
+  return genAI.getGenerativeModel({
+    model: process.env.GEMINI_MODEL ?? 'gemini-2.0-flash',
+  });
+}
 
 interface SFResult {
   bestMove: string;
@@ -123,13 +144,56 @@ export async function POST(req: Request) {
     const readableStream = new ReadableStream({
       async start(controller) {
         try {
-          const stream = client.messages.stream({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 600,
-            messages: [{ role: 'user', content: prompt }],
-          });
-          for await (const event of stream) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+          switch (LLM_PROVIDER) {
+            case 'anthropic': {
+              const client = getAnthropicClient();
+              const stream = client.messages.stream({
+                model: process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001',
+                max_tokens: 600,
+                messages: [{ role: 'user', content: prompt }],
+              });
+              for await (const event of stream) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+              }
+              break;
+            }
+
+            case 'openai': {
+              const client = getOpenAIClient();
+              const stream = await client.chat.completions.create({
+                model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+                max_tokens: 600,
+                messages: [{ role: 'user', content: prompt }],
+                stream: true,
+              });
+              for await (const chunk of stream) {
+                const delta = chunk.choices[0]?.delta?.content;
+                if (delta) {
+                  controller.enqueue(
+                    encoder.encode(
+                      `data: ${JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: delta } })}\n\n`,
+                    ),
+                  );
+                }
+              }
+              break;
+            }
+
+            case 'gemini': {
+              const model = getGeminiModel();
+              const result = await model.generateContentStream(prompt);
+              for await (const chunk of result.stream) {
+                const text = chunk.text();
+                if (text) {
+                  controller.enqueue(
+                    encoder.encode(
+                      `data: ${JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text } })}\n\n`,
+                    ),
+                  );
+                }
+              }
+              break;
+            }
           }
         } catch (err) {
           console.error('[stream error]', err);
