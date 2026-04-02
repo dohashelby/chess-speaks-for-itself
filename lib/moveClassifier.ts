@@ -89,7 +89,7 @@ export function classifyMove(params: {
   legal_move_count?: number;  // 합법수 개수 (1이면 강제수)
   is_book?: boolean;          // 오프닝 이론수 여부
   only_move_margin?: number;
-}): { label: MoveLabel; eval_loss: number; is_only_move: boolean } {
+}): { label: MoveLabel; eval_loss: number; is_only_move: boolean; reason: string; debug: Record<string, number | string | boolean> } {
   const {
     eval_before,
     eval_after,
@@ -106,12 +106,12 @@ export function classifyMove(params: {
 
   // ── 이론수 ────────────────────────────────────────────
   if (is_book) {
-    return { label: 'book', eval_loss: 0, is_only_move: false };
+    return { label: 'book', eval_loss: 0, is_only_move: false, reason: 'Lichess masters DB에 등록된 이론수', debug: { is_book } };
   }
 
   // ── 강제수 (합법수 1개) ───────────────────────────────
   if (legal_move_count === 1) {
-    return { label: 'forced', eval_loss: 0, is_only_move: false };
+    return { label: 'forced', eval_loss: 0, is_only_move: false, reason: '합법수가 1개뿐인 강제수', debug: { legal_move_count } };
   }
 
   // ── 현재 플레이어 시점 승률 계산 ──────────────────────
@@ -120,10 +120,9 @@ export function classifyMove(params: {
   const wpBest   = playerWinPercent(best_eval, turn);
 
   // 승률 손실 (현재 플레이어 시점, 양수 = 나빠짐)
-  // "최선수를 뒀을 때의 내 승률" - "실제로 둔 수의 내 승률"
   const wpDrop = Math.max(0, wpBest - wpAfter);
 
-  // eval_loss: 폰 단위 손실 (참고용, 분류에는 wpDrop 사용)
+  // eval_loss: 폰 단위 손실 (참고용)
   const eval_loss_raw = turn === 'w'
     ? best_eval - eval_after
     : eval_after - best_eval;
@@ -131,49 +130,56 @@ export function classifyMove(params: {
 
   const played_best = played_uci === best_uci;
 
-  // 상위 라인 간 격차 (현재 플레이어 시점)
+  // 상위 라인 간 격차
+  // top_lines는 수를 둔 후 포지션의 SF 결과 (상대 차례)
+  // cp는 백 시점으로 정규화되어 있고, SF MultiPV는 현재 차례 기준 정렬
+  // → 절대값으로 1순위와 2순위의 차이를 측정
   const bestCp   = top_lines[0]?.cp ?? 0;
   const secondCp = top_lines[1]?.cp ?? bestCp;
-  // top_lines cp는 백 시점이므로, 흑이면 부호 반전하여 격차 계산
-  const lineGapSigned = turn === 'w'
-    ? (bestCp - secondCp)
-    : (secondCp - bestCp); // 흑 시점: 2순위가 더 양수(백 유리)면 1순위가 흑에게 더 좋음
-  const lineGap = lineGapSigned / 100;
+  const lineGap = Math.abs(bestCp - secondCp) / 100;
 
-  // ── 절망적 포지션 가드 (Lichess) ──────────────────────
-  // 이미 승률 30% 이하면 blunder 불가
   const isHopeless = wpBefore < 30;
+
+  // 공통 디버그 데이터
+  const d = {
+    turn,
+    played_uci,
+    best_uci,
+    played_best,
+    is_sacrifice,
+    eval_before: +eval_before.toFixed(2),
+    eval_after: +eval_after.toFixed(2),
+    best_eval: +best_eval.toFixed(2),
+    wpBefore: +wpBefore.toFixed(1),
+    wpAfter: +wpAfter.toFixed(1),
+    wpBest: +wpBest.toFixed(1),
+    wpDrop: +wpDrop.toFixed(2),
+    lineGap: +lineGap.toFixed(2),
+    loss: +loss.toFixed(2),
+    isHopeless,
+  };
 
   // ── 메이트 기회 놓침 ──────────────────────────────────
   const bestMate = top_lines[0]?.mate ?? null;
-  // 현재 플레이어에게 유리한 메이트가 있었는지
   const hadMateForPlayer = bestMate !== null &&
     ((turn === 'w' && bestMate > 0) || (turn === 'b' && bestMate < 0));
   if (hadMateForPlayer && !played_best) {
-    return { label: 'miss', eval_loss: loss, is_only_move: false };
+    return { label: 'miss', eval_loss: loss, is_only_move: false, reason: `메이트(M${Math.abs(bestMate!)}) 기회를 놓침 — 최선수: ${best_uci}`, debug: { ...d, bestMate } };
   }
 
   // ── 탁월수 판별 ───────────────────────────────────────
-  // 희생 + 최선수 + 승률 유지 + 2순위와 큰 격차
-  // + 이미 압승 중이면 불가 (wpBefore < 97)
-  // + 이미 지고 있으면 불가 (wpBefore > 15)
-  if (played_best && is_sacrifice && wpDrop <= 1) {
-    const notAlreadyWinning = wpBefore < 97;
-    const notAlreadyLosing  = wpBefore > 15;
-    if (notAlreadyWinning && notAlreadyLosing && lineGap >= 0.5) {
-      return { label: 'brilliant', eval_loss: 0, is_only_move: false };
-    }
+  if (played_best && is_sacrifice && wpDrop <= 1 && lineGap >= 0.5) {
+    return { label: 'brilliant', eval_loss: 0, is_only_move: false, reason: `희생수이면서 최선수, 승률 유지(drop ${wpDrop.toFixed(1)}%), 라인격차 ${lineGap.toFixed(2)}`, debug: d };
   }
 
   // ── Great move (포지션 전환) ───────────────────────────
-  // 열세→균형 또는 균형→우세로 전환 (10%p 이상 스윙, 50% 경계 통과)
   if (wpDrop <= 1) {
     const crossedFifty =
-      (wpBefore < 50 && wpAfter >= 50) ||  // 열세→균형/우세
-      (wpBefore < 40 && wpAfter >= 40);     // 크게 열세→열세 탈출
+      (wpBefore < 50 && wpAfter >= 50) ||
+      (wpBefore < 40 && wpAfter >= 40);
     const swing = wpAfter - wpBefore;
     if (crossedFifty && swing >= 10) {
-      return { label: 'great', eval_loss: 0, is_only_move: false };
+      return { label: 'great', eval_loss: 0, is_only_move: false, reason: `포지션 전환: 승률 ${wpBefore.toFixed(0)}% → ${wpAfter.toFixed(0)}% (swing +${swing.toFixed(0)}%)`, debug: d };
     }
   }
 
@@ -184,34 +190,29 @@ export function classifyMove(params: {
     lineGap >= only_move_margin;
 
   if (is_only_move) {
-    return { label: 'only_move', eval_loss: 0, is_only_move: true };
+    return { label: 'only_move', eval_loss: 0, is_only_move: true, reason: `유일한 좋은 수 — 2순위와 ${lineGap.toFixed(2)}폰 격차`, debug: d };
   }
 
   // ── 최선수 vs 일반수 ─────────────────────────────────
   if (played_best && wpDrop <= 0.5) {
     if (lineGap >= 0.3) {
-      return { label: 'best', eval_loss: 0, is_only_move: false };
+      return { label: 'best', eval_loss: 0, is_only_move: false, reason: `최선수, 라인격차 ${lineGap.toFixed(2)} ≥ 0.3 (찾기 어려운 수)`, debug: d };
     }
-    return { label: 'good', eval_loss: 0, is_only_move: false };
+    return { label: 'good', eval_loss: 0, is_only_move: false, reason: `최선수이지만 라인격차 ${lineGap.toFixed(2)} < 0.3 (뻔한 수)`, debug: d };
   }
 
   // ── 승률 drop 기반 분류 ───────────────────────────────
   if (wpDrop < 2) {
-    return lineGap >= 0.2
-      ? { label: 'excellent', eval_loss: loss, is_only_move: false }
-      : { label: 'good',      eval_loss: loss, is_only_move: false };
+    if (lineGap >= 0.2) {
+      return { label: 'excellent', eval_loss: loss, is_only_move: false, reason: `wpDrop ${wpDrop.toFixed(2)}% < 2%, 라인격차 ${lineGap.toFixed(2)} ≥ 0.2`, debug: d };
+    }
+    return { label: 'good', eval_loss: loss, is_only_move: false, reason: `wpDrop ${wpDrop.toFixed(2)}% < 2%, 라인격차 ${lineGap.toFixed(2)} < 0.2`, debug: d };
   }
-  if (wpDrop < 5)  return { label: 'good',       eval_loss: loss, is_only_move: false };
-  if (wpDrop < 10) return { label: 'inaccuracy', eval_loss: loss, is_only_move: false };
-  if (wpDrop < 20) {
-    // 절망적 포지션이면 mistake까지만
-    return { label: 'mistake', eval_loss: loss, is_only_move: false };
-  }
-  // 절망적 포지션 가드: 승률 30% 이하면 blunder 대신 mistake
-  if (isHopeless) {
-    return { label: 'mistake', eval_loss: loss, is_only_move: false };
-  }
-  return { label: 'blunder', eval_loss: loss, is_only_move: false };
+  if (wpDrop < 5)  return { label: 'good',       eval_loss: loss, is_only_move: false, reason: `wpDrop ${wpDrop.toFixed(2)}% < 5%`, debug: d };
+  if (wpDrop < 10) return { label: 'inaccuracy', eval_loss: loss, is_only_move: false, reason: `wpDrop ${wpDrop.toFixed(2)}% (5~10%)`, debug: d };
+  if (wpDrop < 20) return { label: 'mistake',    eval_loss: loss, is_only_move: false, reason: `wpDrop ${wpDrop.toFixed(2)}% (10~20%)`, debug: d };
+  if (isHopeless)  return { label: 'mistake',    eval_loss: loss, is_only_move: false, reason: `wpDrop ${wpDrop.toFixed(2)}% ≥ 20%이지만 절망적 포지션(wp ${wpBefore.toFixed(0)}% < 30%)`, debug: d };
+  return { label: 'blunder', eval_loss: loss, is_only_move: false, reason: `wpDrop ${wpDrop.toFixed(2)}% ≥ 20%`, debug: d };
 }
 
 // ── 정확도 계산 (Lichess 표준) ──────────────────────────────

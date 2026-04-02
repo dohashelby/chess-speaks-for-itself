@@ -195,6 +195,42 @@
   font-size: 8px;
 }
 
+/* Classify 로그 */
+.debugClassifyLabel {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.debugClassifyReason {
+  font-size: 10px;
+  color: #999;
+  margin: 4px 0;
+  line-height: 1.5;
+}
+
+.debugClassifyDebug {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.debugClassifyKV {
+  display: inline-flex;
+  gap: 2px;
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: #111;
+}
+
+.debugClassifyKey {
+  color: #555;
+}
+
+.debugClassifyVal {
+  color: #888;
+}
+
 /* ── 보드 컬럼 ── */
 .boardCol {
   display: flex;
