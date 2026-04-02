@@ -1,9 +1,9 @@
-/* components/ChessBoard.module.css */
+/* components/ChessBoard.module.css — v2 */
 
 /* ── 레이아웃 ── */
 .root {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: minmax(0, 630px) 300px 1fr;
   gap: 20px;
   padding: 20px;
   font-family: 'IBM Plex Mono', 'Courier New', monospace;
@@ -19,16 +19,107 @@
   }
 }
 
+/* ── SF 디버그 패널 ── */
+.debugPanel {
+  background: #0a0a0a;
+  border: 0.5px solid #2a2a2a;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 40px);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.debugHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 0.5px solid #2a2a2a;
+  flex-shrink: 0;
+}
+
+.debugDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e04040;
+  animation: pulse 1.2s infinite;
+}
+
+.debugTitle {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #555;
+}
+
+.debugCount {
+  margin-left: auto;
+  font-size: 9px;
+  color: #444;
+}
+
+.debugBody {
+  flex: 1;
+  overflow: auto;
+  padding: 6px 0;
+  scrollbar-width: thin;
+  scrollbar-color: #333 transparent;
+}
+
+.debugLine {
+  padding: 1px 12px;
+  font-size: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: #555;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+
+.debugLine:hover {
+  background: #141414;
+  color: #888;
+}
+
+.debugIdx {
+  display: inline-block;
+  width: 28px;
+  color: #333;
+  text-align: right;
+  margin-right: 8px;
+  user-select: none;
+}
+
+.debugBest {
+  color: #1baca6;
+  font-weight: 600;
+}
+
+.debugInfo {
+  color: #6a6a6a;
+}
+
 /* ── 보드 컬럼 ── */
 .boardCol {
   display: flex;
+  flex-direction: column;
   gap: 8px;
   align-items: flex-start;
 }
 
+.boardRow {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  width: 100%;
+}
+
 .boardWrap {
-  width: 576px;
-  height: 576px;
+  flex: 1;
+  aspect-ratio: 1;
+  min-width: 0;
 }
 
 /* ── 칸 ── */
@@ -90,7 +181,7 @@
 
 .evalBar {
   width: 14px;
-  height: 576px;
+  flex: 1;
   background: #1a1a1a;
   border: 0.5px solid #333;
   border-radius: 3px;
@@ -112,11 +203,6 @@
   letter-spacing: 0.02em;
 }
 
-@media (max-width: 640px) {
-  .evalBar {
-    height: 352px;
-  }
-}
 
 /* ── 상태 바 ── */
 .statusBar {
@@ -170,7 +256,6 @@
   flex-direction: column;
   gap: 10px;
   min-width: 0;
-  max-width: 340px;
 }
 
 /* ── 카드 ── */

@@ -1,6 +1,8 @@
 'use client';
 
-import ChessBoard from '@/components/ChessBoard';
+import dynamic from 'next/dynamic';
+
+const ChessBoard = dynamic(() => import('@/components/ChessBoard'), { ssr: false });
 
 export default function AnalyzePage() {
   return (

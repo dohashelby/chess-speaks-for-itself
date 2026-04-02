@@ -1,97 +1,94 @@
 // lib/moveClassifier.ts
-// Chess.com 스타일 수 분류기
+// Chess.com/Lichess 스타일 수 분류기
 // Stockfish 분석 결과를 받아 각 수에 라벨을 부여
-
-import { Chess, Move } from 'chess.js';
+//
+// 모든 eval 값은 "백 시점 폰 단위"로 통일되어 들어옴 (useStockfish에서 정규화)
+// 흑에게 유리하면 음수, 백에게 유리하면 양수
 
 // ── 타입 ─────────────────────────────────────────────────
 
 export type MoveLabel =
-  | 'brilliant'   // 탁월수 ✦ 희생을 포함한 최선수
+  | 'brilliant'   // 탁월수 ✦
+  | 'great'       // 호수   ★ (포지션 전환)
   | 'best'        // 최선수 ✓
   | 'excellent'   // 우수   ○
   | 'good'        // 양호   (무라벨)
+  | 'book'        // 이론수 📖
   | 'inaccuracy'  // 부정확 ?
-  | 'mistake'     // 실수   ?!  (Chess.com은 실제로 ?!)
+  | 'mistake'     // 실수   ?!
   | 'blunder'     // 블런더 ??
-  | 'miss'        // 見落   — 메이트 기회 놓침
-  | 'only_move';  // 유일수 — 이 수만이 포지션을 유지
+  | 'miss'        // 見落   ✗
+  | 'forced'      // 강제수 (합법수 1개)
+  | 'only_move';  // 유일수 □
 
 export interface MoveAnalysis {
-  san: string;           // 대수 표기 (예: Nf3)
-  uci: string;           // UCI (예: g1f3)
-  fen_before: string;    // 이 수 두기 전 FEN
-  fen_after: string;     // 이 수 두고 난 후 FEN
+  san: string;
+  uci: string;
+  fen_before: string;
+  fen_after: string;
   label: MoveLabel;
-  eval_before: number;   // 이 수 두기 전 평가 (백 시점, 폰 단위)
-  eval_after: number;    // 이 수 두고 난 후 평가
-  eval_loss: number;     // eval 손실 (양수 = 나빠짐)
-  best_move_uci: string; // SF가 추천한 최선수 UCI
-  best_eval: number;     // 최선수를 뒀을 때 예상 평가
-  top_lines: TopLine[];  // SF MultiPV 상위 라인
-  is_sacrifice: boolean; // 가치 낮은 기물로 가치 높은 기물 잡음
-  only_move_threshold: number; // 유일수 판별에 쓴 임계값
+  eval_before: number;   // 백 시점 폰 단위
+  eval_after: number;
+  eval_loss: number;
+  best_move_uci: string;
+  best_eval: number;
+  top_lines: TopLine[];
+  is_sacrifice: boolean;
+  only_move_threshold: number;
 }
 
 export interface TopLine {
-  moves: string;   // UCI space-separated
-  cp: number;      // centipawns (mate = ±9999)
+  moves: string;
+  cp: number;        // centipawns, 백 시점
   mate: number | null;
 }
 
 export interface GameAnalysis {
   moves: MoveAnalysis[];
-  accuracy: {           // Chess.com 스타일 정확도 (0~100)
-    white: number;
-    black: number;
-  };
-  summary: {            // 라벨별 카운트
-    white: Record<MoveLabel, number>;
-    black: Record<MoveLabel, number>;
-  };
+  accuracy: { white: number; black: number };
+  summary: { white: Record<MoveLabel, number>; black: Record<MoveLabel, number> };
 }
 
-// ── 기물 가치 ─────────────────────────────────────────────
+// ── 승률 변환 (Lichess 표준) ────────────────────────────────
+// cp: centipawn, 백 시점. ±1000으로 클램핑
+// 반환: 0.0 (흑 완승) ~ 1.0 (백 완승)
 
-const PIECE_VALUE: Record<string, number> = {
-  p: 1, n: 3, b: 3, r: 5, q: 9, k: 0,
-};
-
-// ── eval 정규화 (항상 현재 플레이어 시점) ─────────────────
-// chess.js turn() === 'w' 이면 양수가 좋음, 'b'이면 음수가 좋음
-// 여기서는 "백 시점" 절대값으로 통일
-
-function normalizeEval(cp: number, turn: 'w' | 'b'): number {
-  // SF는 항상 현재 플레이어 기준으로 출력
-  // 백 차례면 그대로, 흑 차례면 부호 반전
-  return turn === 'w' ? cp / 100 : -cp / 100;
+function winPercent(cpWhitePerspective: number): number {
+  const clamped = Math.max(-1000, Math.min(1000, cpWhitePerspective));
+  return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * clamped)) - 1);
 }
 
-// ── 희생 판별 ─────────────────────────────────────────────
+// 현재 플레이어 시점 승률 (0~100)
+// 백이면 그대로, 흑이면 100에서 빼기
+function playerWinPercent(evalWhitePawns: number, turn: 'w' | 'b'): number {
+  const wp = winPercent(evalWhitePawns * 100);
+  return turn === 'w' ? wp : 100 - wp;
+}
 
-function isSacrifice(move: Move, chess: Chess): boolean {
-  // 잡기 수가 아니면 희생 아님
-  if (!move.flags.includes('c') && !move.flags.includes('e')) return false;
+// ── 정확도 계산 (Lichess 표준) ──────────────────────────────
 
-  const movedValue = PIECE_VALUE[move.piece] ?? 0;
-  const capturedValue = PIECE_VALUE[move.captured ?? ''] ?? 0;
-
-  // 더 비싼 기물로 더 싼 기물을 잡음 = 희생 후보
-  return movedValue > capturedValue;
+function moveAccuracy(winDiff: number): number {
+  // winDiff: 수를 두기 전 승률 - 수를 둔 후 승률 (현재 플레이어 시점, 양수=나빠짐)
+  if (winDiff <= 0) return 100; // 포지션이 좋아졌으면 100%
+  return Math.max(0, Math.min(100,
+    103.1668 * Math.exp(-0.04354 * winDiff) - 3.1669
+  ));
 }
 
 // ── 핵심 분류 함수 ────────────────────────────────────────
 
 export function classifyMove(params: {
-  eval_before: number;      // 백 시점 폰 단위, 이 수 두기 전
-  eval_after: number;       // 백 시점 폰 단위, 이 수 두고 난 후
+  eval_before: number;      // 백 시점 폰 단위, 수 두기 전
+  eval_after: number;       // 백 시점 폰 단위, 수 둔 후
   best_eval: number;        // 최선수를 뒀을 때 예상 eval (백 시점)
   played_uci: string;
   best_uci: string;
-  turn: 'w' | 'b';
+  turn: 'w' | 'b';         // 이 수를 둔 플레이어
   is_sacrifice: boolean;
   top_lines: TopLine[];
-  only_move_margin?: number; // 유일수 판별 마진 (기본 0.5)
+  legal_move_count?: number;  // 합법수 개수 (1이면 강제수)
+  is_book?: boolean;          // 오프닝 이론수 여부
+  only_move_margin?: number;
 }): { label: MoveLabel; eval_loss: number; is_only_move: boolean } {
   const {
     eval_before,
@@ -102,70 +99,125 @@ export function classifyMove(params: {
     turn,
     is_sacrifice,
     top_lines,
+    legal_move_count,
+    is_book = false,
     only_move_margin = 0.5,
   } = params;
 
-  // eval_loss: 최선수 대비 손실 (항상 양수 = 나빠짐)
-  // 백이라면 best_eval - eval_after, 흑이라면 eval_after - best_eval
-  const eval_loss = turn === 'w'
+  // ── 이론수 ────────────────────────────────────────────
+  if (is_book) {
+    return { label: 'book', eval_loss: 0, is_only_move: false };
+  }
+
+  // ── 강제수 (합법수 1개) ───────────────────────────────
+  if (legal_move_count === 1) {
+    return { label: 'forced', eval_loss: 0, is_only_move: false };
+  }
+
+  // ── 현재 플레이어 시점 승률 계산 ──────────────────────
+  const wpBefore = playerWinPercent(eval_before, turn);
+  const wpAfter  = playerWinPercent(eval_after, turn);
+  const wpBest   = playerWinPercent(best_eval, turn);
+
+  // 승률 손실 (현재 플레이어 시점, 양수 = 나빠짐)
+  // "최선수를 뒀을 때의 내 승률" - "실제로 둔 수의 내 승률"
+  const wpDrop = Math.max(0, wpBest - wpAfter);
+
+  // eval_loss: 폰 단위 손실 (참고용, 분류에는 wpDrop 사용)
+  const eval_loss_raw = turn === 'w'
     ? best_eval - eval_after
     : eval_after - best_eval;
+  const loss = Math.max(0, eval_loss_raw);
 
-  const loss = Math.max(0, eval_loss);
+  const played_best = played_uci === best_uci;
 
-  // ── 유일수 판별 ───────────────────────────────────────
-  // SF MultiPV에서 2순위 이하가 모두 1순위보다 only_move_margin 이상 나쁠 때
-  const is_only_move =
-    top_lines.length >= 2 &&
-    played_uci === best_uci &&
-    (() => {
-      const best_cp = top_lines[0]?.cp ?? 0;
-      const second_cp = top_lines[1]?.cp ?? 0;
-      // 현재 플레이어 기준: 1순위가 훨씬 좋음
-      return (best_cp - second_cp) / 100 >= only_move_margin;
-    })();
+  // 상위 라인 간 격차 (현재 플레이어 시점)
+  const bestCp   = top_lines[0]?.cp ?? 0;
+  const secondCp = top_lines[1]?.cp ?? bestCp;
+  // top_lines cp는 백 시점이므로, 흑이면 부호 반전하여 격차 계산
+  const lineGapSigned = turn === 'w'
+    ? (bestCp - secondCp)
+    : (secondCp - bestCp); // 흑 시점: 2순위가 더 양수(백 유리)면 1순위가 흑에게 더 좋음
+  const lineGap = lineGapSigned / 100;
+
+  // ── 절망적 포지션 가드 (Lichess) ──────────────────────
+  // 이미 승률 30% 이하면 blunder 불가
+  const isHopeless = wpBefore < 30;
 
   // ── 메이트 기회 놓침 ──────────────────────────────────
-  // 이 수 전에 메이트가 있었는데 놓친 경우
-  const had_mate_before = top_lines[0]?.mate !== null && (top_lines[0]?.mate ?? 0) > 0;
-  const played_best = played_uci === best_uci;
-  if (had_mate_before && !played_best) {
+  const bestMate = top_lines[0]?.mate ?? null;
+  // 현재 플레이어에게 유리한 메이트가 있었는지
+  const hadMateForPlayer = bestMate !== null &&
+    ((turn === 'w' && bestMate > 0) || (turn === 'b' && bestMate < 0));
+  if (hadMateForPlayer && !played_best) {
     return { label: 'miss', eval_loss: loss, is_only_move: false };
   }
 
   // ── 탁월수 판별 ───────────────────────────────────────
-  // 희생이 포함된 최선수이고, eval이 유지되거나 상승
-  if (played_best && is_sacrifice && loss <= 0.1) {
-    return { label: 'brilliant', eval_loss: 0, is_only_move };
+  // 희생 + 최선수 + 승률 유지 + 2순위와 큰 격차
+  // + 이미 압승 중이면 불가 (wpBefore < 97)
+  // + 이미 지고 있으면 불가 (wpBefore > 15)
+  if (played_best && is_sacrifice && wpDrop <= 1) {
+    const notAlreadyWinning = wpBefore < 97;
+    const notAlreadyLosing  = wpBefore > 15;
+    if (notAlreadyWinning && notAlreadyLosing && lineGap >= 0.5) {
+      return { label: 'brilliant', eval_loss: 0, is_only_move: false };
+    }
   }
 
-  // ── 유일수 (탁월수보다 낮은 우선순위) ─────────────────
+  // ── Great move (포지션 전환) ───────────────────────────
+  // 열세→균형 또는 균형→우세로 전환 (10%p 이상 스윙, 50% 경계 통과)
+  if (wpDrop <= 1) {
+    const crossedFifty =
+      (wpBefore < 50 && wpAfter >= 50) ||  // 열세→균형/우세
+      (wpBefore < 40 && wpAfter >= 40);     // 크게 열세→열세 탈출
+    const swing = wpAfter - wpBefore;
+    if (crossedFifty && swing >= 10) {
+      return { label: 'great', eval_loss: 0, is_only_move: false };
+    }
+  }
+
+  // ── 유일수 판별 ───────────────────────────────────────
+  const is_only_move =
+    top_lines.length >= 2 &&
+    played_best &&
+    lineGap >= only_move_margin;
+
   if (is_only_move) {
     return { label: 'only_move', eval_loss: 0, is_only_move: true };
   }
 
-  // ── 최선수 ────────────────────────────────────────────
-  if (played_best && loss <= 0.05) {
-    return { label: 'best', eval_loss: 0, is_only_move: false };
+  // ── 최선수 vs 일반수 ─────────────────────────────────
+  if (played_best && wpDrop <= 0.5) {
+    if (lineGap >= 0.3) {
+      return { label: 'best', eval_loss: 0, is_only_move: false };
+    }
+    return { label: 'good', eval_loss: 0, is_only_move: false };
   }
 
-  // ── 이하 loss 기반 분류 ───────────────────────────────
-  if (loss < 0.1)  return { label: 'excellent',  eval_loss: loss, is_only_move: false };
-  if (loss < 0.3)  return { label: 'good',       eval_loss: loss, is_only_move: false };
-  if (loss < 0.9)  return { label: 'inaccuracy', eval_loss: loss, is_only_move: false };
-  if (loss < 2.0)  return { label: 'mistake',    eval_loss: loss, is_only_move: false };
-  return               { label: 'blunder',    eval_loss: loss, is_only_move: false };
+  // ── 승률 drop 기반 분류 ───────────────────────────────
+  if (wpDrop < 2) {
+    return lineGap >= 0.2
+      ? { label: 'excellent', eval_loss: loss, is_only_move: false }
+      : { label: 'good',      eval_loss: loss, is_only_move: false };
+  }
+  if (wpDrop < 5)  return { label: 'good',       eval_loss: loss, is_only_move: false };
+  if (wpDrop < 10) return { label: 'inaccuracy', eval_loss: loss, is_only_move: false };
+  if (wpDrop < 20) {
+    // 절망적 포지션이면 mistake까지만
+    return { label: 'mistake', eval_loss: loss, is_only_move: false };
+  }
+  // 절망적 포지션 가드: 승률 30% 이하면 blunder 대신 mistake
+  if (isHopeless) {
+    return { label: 'mistake', eval_loss: loss, is_only_move: false };
+  }
+  return { label: 'blunder', eval_loss: loss, is_only_move: false };
 }
 
-// ── 정확도 계산 (Chess.com 방식 근사) ────────────────────
-// 각 수의 eval_loss를 승리 확률 변환 후 평균
-
-function winProb(cp: number): number {
-  // Logistic 변환: 1 / (1 + 10^(-cp/4))
-  return 1 / (1 + Math.pow(10, -cp / 4));
-}
+// ── 정확도 계산 (Lichess 표준) ──────────────────────────────
 
 export function calcAccuracy(moves: MoveAnalysis[], color: 'w' | 'b'): number {
+  const turn = color;
   const colorMoves = moves.filter((_, i) =>
     color === 'w' ? i % 2 === 0 : i % 2 !== 0
   );
@@ -173,17 +225,10 @@ export function calcAccuracy(moves: MoveAnalysis[], color: 'w' | 'b'): number {
 
   let total = 0;
   for (const m of colorMoves) {
-    const wp_before = winProb(m.eval_before * 100);
-    const wp_after  = winProb(m.eval_after  * 100);
-    const wp_best   = winProb(m.best_eval   * 100);
-
-    const accuracy_this =
-      wp_best === wp_before
-        ? 100
-        : Math.max(0, Math.min(100,
-            100 * (1 - (wp_best - wp_after) / Math.max(wp_best - wp_before, 0.001))
-          ));
-    total += accuracy_this;
+    const wpBefore = playerWinPercent(m.eval_before, turn);
+    const wpAfter  = playerWinPercent(m.eval_after, turn);
+    const winDiff = Math.max(0, wpBefore - wpAfter);
+    total += moveAccuracy(winDiff);
   }
 
   return Math.round(total / colorMoves.length);
@@ -196,13 +241,16 @@ export const LABEL_META: Record<MoveLabel, {
   symbol: string;
   color: string;
   bg: string;
-  priority: number;  // 1 = 가장 중요 (자동 설명 트리거)
+  priority: number;
 }> = {
   brilliant:  { ko: '탁월수', symbol: '!!',  color: '#1baca6', bg: '#0d3d3b', priority: 1 },
+  great:      { ko: '호수',   symbol: '!',   color: '#5c9ee6', bg: '#132a44', priority: 2 },
   only_move:  { ko: '유일수', symbol: '□',   color: '#9040e0', bg: '#2d1a4a', priority: 2 },
   best:       { ko: '최선수', symbol: '✓',   color: '#4caf70', bg: '#0d2b1a', priority: 5 },
-  excellent:  { ko: '우수',   symbol: '!',   color: '#7bc96f', bg: '#152a12', priority: 6 },
+  excellent:  { ko: '우수',   symbol: '○',   color: '#7bc96f', bg: '#152a12', priority: 6 },
   good:       { ko: '양호',   symbol: '',    color: '#888',    bg: 'transparent', priority: 7 },
+  book:       { ko: '이론수', symbol: '📖',  color: '#a08060', bg: '#2a2010', priority: 8 },
+  forced:     { ko: '강제수', symbol: '—',   color: '#666',    bg: 'transparent', priority: 8 },
   inaccuracy: { ko: '부정확', symbol: '?',   color: '#f0c040', bg: '#3a2d00', priority: 4 },
   mistake:    { ko: '실수',   symbol: '?!',  color: '#e07000', bg: '#3a1c00', priority: 3 },
   blunder:    { ko: '블런더', symbol: '??',  color: '#e04040', bg: '#3a0000', priority: 2 },
@@ -211,5 +259,5 @@ export const LABEL_META: Record<MoveLabel, {
 
 // 자동 해설을 트리거할 라벨 (priority <= 4)
 export const AUTO_EXPLAIN_LABELS = new Set<MoveLabel>([
-  'brilliant', 'only_move', 'blunder', 'mistake', 'miss', 'inaccuracy',
+  'brilliant', 'great', 'only_move', 'blunder', 'mistake', 'miss', 'inaccuracy',
 ]);
