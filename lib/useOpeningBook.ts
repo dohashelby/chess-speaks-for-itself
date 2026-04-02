@@ -1,7 +1,10 @@
 // lib/useOpeningBook.ts
-// Lichess Opening Explorer API를 사용한 이론수(book move) 판별
+// lichess-org/chess-openings ECO DB 기반 이론수 판별
+// 수를 둔 후의 포지션이 named opening에 해당하면 이론수
 
 import { useCallback, useRef } from 'react';
+import { Chess, Square } from 'chess.js';
+import openingFens from './openingFens.json';
 
 export interface ExplorerMove {
   uci: string;
@@ -20,76 +23,44 @@ export interface ExplorerResponse {
 
 export interface BookLogEntry {
   fen: string;
-  totalGames: number;
-  moves: { san: string; uci: string; games: number; isBook: boolean }[];
+  resultFen: string;
   playedUci: string | null;
   isBook: boolean;
   timestamp: number;
 }
 
-const EXPLORER_URL = '/api/opening';
-const MIN_GAMES = 5;
+// FEN 정규화: 앞 4필드만 사용 (half-move clock, full-move number 무시)
+function normalizeFen(fen: string): string {
+  return fen.split(' ').slice(0, 4).join(' ');
+}
 
-const cache = new Map<string, ExplorerResponse | null>();
+const OPENING_SET = new Set<string>(openingFens as string[]);
 
 export function useOpeningBook() {
-  const pendingRef = useRef<Map<string, Promise<ExplorerResponse | null>>>(new Map());
   const logRef = useRef<BookLogEntry[]>([]);
 
-  const fetchExplorer = useCallback(async (fen: string): Promise<ExplorerResponse | null> => {
-    if (cache.has(fen)) return cache.get(fen)!;
-    if (pendingRef.current.has(fen)) return pendingRef.current.get(fen)!;
+  const isBookMove = useCallback((fen: string, uci: string): boolean => {
+    try {
+      const chess = new Chess(fen);
+      const move = chess.move({
+        from: uci.slice(0, 2) as Square,
+        to: uci.slice(2, 4) as Square,
+        promotion: uci[4] as 'q' | 'r' | 'b' | 'n' | undefined,
+      });
+      if (!move) return false;
 
-    const promise = (async () => {
-      try {
-        const params = new URLSearchParams({ fen });
-        const res = await fetch(`${EXPLORER_URL}?${params}`);
-        if (!res.ok) {
-          cache.set(fen, null);
-          return null;
-        }
-        const data: ExplorerResponse = await res.json();
-        cache.set(fen, data);
-        return data;
-      } catch {
-        cache.set(fen, null);
-        return null;
-      } finally {
-        pendingRef.current.delete(fen);
-      }
-    })();
+      const resultFen = normalizeFen(chess.fen());
+      const isBook = OPENING_SET.has(resultFen);
 
-    pendingRef.current.set(fen, promise);
-    return promise;
+      const log = logRef.current;
+      log.push({ fen, resultFen, playedUci: uci, isBook, timestamp: Date.now() });
+      if (log.length > 50) log.splice(0, log.length - 50);
+
+      return isBook;
+    } catch {
+      return false;
+    }
   }, []);
 
-  const isBookMove = useCallback(async (fen: string, uci: string): Promise<boolean> => {
-    const data = await fetchExplorer(fen);
-    const totalGames = data ? data.white + data.draws + data.black : 0;
-
-    const moves = (data?.moves ?? []).map(m => {
-      const games = m.white + m.draws + m.black;
-      return { san: m.san, uci: m.uci, games, isBook: games >= MIN_GAMES };
-    });
-
-    const isBook = totalGames >= MIN_GAMES &&
-      moves.some(m => m.uci === uci && m.isBook);
-
-    // 로그 추가
-    const entry: BookLogEntry = {
-      fen,
-      totalGames,
-      moves: moves.slice(0, 8), // 상위 8개만
-      playedUci: uci,
-      isBook,
-      timestamp: Date.now(),
-    };
-    const log = logRef.current;
-    log.push(entry);
-    if (log.length > 50) log.splice(0, log.length - 50);
-
-    return isBook;
-  }, [fetchExplorer]);
-
-  return { isBookMove, fetchExplorer, bookLogRef: logRef };
+  return { isBookMove, bookLogRef: logRef };
 }

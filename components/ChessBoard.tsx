@@ -17,6 +17,30 @@ interface ClassifyLogEntry {
   timestamp: number;
 }
 
+// ── UCI → SAN 변환 헬퍼 ────────────────────────────────────
+function uciToSan(fen: string, uci: string): string {
+  if (!uci) return '';
+  try {
+    const chess = new Chess(fen);
+    const move = chess.move({ from: uci.slice(0, 2) as Square, to: uci.slice(2, 4) as Square, promotion: uci[4] as 'q' | 'r' | 'b' | 'n' | undefined });
+    return move?.san ?? uci;
+  } catch { return uci; }
+}
+
+function uciSequenceToSan(fen: string, uciMoves: string): string {
+  const chess = new Chess(fen);
+  const sans: string[] = [];
+  for (const uci of uciMoves.split(' ')) {
+    if (!uci) continue;
+    try {
+      const move = chess.move({ from: uci.slice(0, 2) as Square, to: uci.slice(2, 4) as Square, promotion: uci[4] as 'q' | 'r' | 'b' | 'n' | undefined });
+      if (!move) break;
+      sans.push(move.san);
+    } catch { break; }
+  }
+  return sans.join(' ');
+}
+
 // ── Eval Bar ──────────────────────────────────────────────
 function EvalBar({ value, mate }: { value: number; mate: number | null }) {
   const clamp = Math.min(45, Math.max(-45, value * 6));
@@ -266,23 +290,12 @@ function DebugPanel({
               <span className={entry.isBook ? styles.debugBookMatch : styles.debugBookMiss}>
                 {entry.isBook ? '📖 BOOK' : '— NOT BOOK'}
               </span>
-              <span className={styles.debugBookGames}>{entry.totalGames.toLocaleString()} master games</span>
             </div>
             <div className={styles.debugBookFen}>{entry.fen.split(' ').slice(0, 2).join(' ')} ...</div>
             <div className={styles.debugBookPlayed}>
               played: <span className={entry.isBook ? styles.debugBest : ''}>{entry.playedUci}</span>
             </div>
-            <div className={styles.debugBookMoves}>
-              {entry.moves.map((m, j) => (
-                <span
-                  key={j}
-                  className={`${styles.debugBookMove} ${m.uci === entry.playedUci ? styles.debugBookMovePlayed : ''}`}
-                >
-                  {m.san} <span className={styles.debugBookMoveGames}>({m.games})</span>
-                </span>
-              ))}
-              {entry.moves.length === 0 && <span className={styles.debugInfo}>no master games</span>}
-            </div>
+            <div className={styles.debugBookFen}>→ {entry.resultFen}</div>
           </div>
         ))}
         {tab === 'classify' && classifyLog.map((entry, i) => (
@@ -350,8 +363,9 @@ export default function ChessBoard({
   const [currentIdx, setCurrentIdx] = useState(0);
   const [pgnInput, setPgnInput] = useState(initialPgn ?? '');
   const [pgnError, setPgnError] = useState('');
-  const [currentLevel, setCurrentLevel] = useState<'beginner' | 'intermediate'>(level);
-  const [aiLastMoveSan, setAiLastMoveSan] = useState('');
+  // AI 해설 비활성화 중 — ANTHROPIC_API_KEY 설정 후 주석 해제
+  // const [currentLevel, setCurrentLevel] = useState<'beginner' | 'intermediate'>(level);
+  // const [aiLastMoveSan, setAiLastMoveSan] = useState('');
 
   const pendingRef = useRef<PendingClassify | null>(null);
   const classifyLogRef = useRef<ClassifyLogEntry[]>([]);
@@ -371,8 +385,8 @@ export default function ChessBoard({
     if (!pending || !sfResult) return;
     pendingRef.current = null;
 
-    const classify = async () => {
-      const book = await isBookMove(pending.fenBefore, pending.playedUci);
+    const classify = () => {
+      const book = isBookMove(pending.fenBefore, pending.playedUci);
 
       const result = classifyMove({
         eval_before: pending.evalBefore,
@@ -474,7 +488,7 @@ export default function ChessBoard({
     setLastMove({ from, to });
     setSelected(null);
     setLegalDests([]);
-    setAiLastMoveSan(move.san);
+    // setAiLastMoveSan(move.san);
     evaluate(newFen);
     return true;
   }, [sfResult, fenHistory, currentIdx, sanHistory, evaluate]);
@@ -544,7 +558,7 @@ export default function ChessBoard({
     setLastMove(history.length > 0
       ? { from: history.at(-1)!.from as Square, to: history.at(-1)!.to as Square }
       : null);
-    setAiLastMoveSan(g.history().at(-1) ?? '');
+    // setAiLastMoveSan(g.history().at(-1) ?? '');
     evaluate(g.fen());
   }, [pgnInput, evaluate]);
 
@@ -558,7 +572,7 @@ export default function ChessBoard({
     setSelected(null);
     setLegalDests([]);
     setCurrentLabel(moveLabels[idx - 1] ?? null);
-    setAiLastMoveSan(sanHistory[idx - 1] ?? '');
+    // setAiLastMoveSan(sanHistory[idx - 1] ?? '');
     evaluate(f);
   }, [fenHistory, moveLabels, sanHistory, evaluate]);
 
@@ -578,7 +592,7 @@ export default function ChessBoard({
     setCurrentIdx(0);
     setPgnInput('');
     setPgnError('');
-    setAiLastMoveSan('');
+    // setAiLastMoveSan('');
     stop();
     evaluate(new Chess().fen()); // 초기 포지션 재분석 (sfResult stale 방지)
   }, [stop, evaluate]);
@@ -638,9 +652,7 @@ export default function ChessBoard({
           <div className={styles.card}>
             <div className={styles.cardLabel}>Stockfish 추천</div>
             <div className={styles.bestMove}>
-              {sfResult.bestMove.slice(0, 2).toUpperCase()}
-              <span className={styles.arrow}>→</span>
-              {sfResult.bestMove.slice(2, 4).toUpperCase()}
+              {uciToSan(fen, sfResult.bestMove)}
             </div>
             <div className={styles.lines}>
               {sfResult.lines.map((line, i) => (
@@ -651,7 +663,7 @@ export default function ChessBoard({
                       : `${line.cp > 0 ? '+' : ''}${(line.cp / 100).toFixed(1)}`}
                   </span>
                   <span className={styles.lineMoves}>
-                    {line.moves.split(' ').slice(0, 6).join(' ')}
+                    {uciSequenceToSan(fen, line.moves.split(' ').slice(0, 6).join(' '))}
                   </span>
                 </div>
               ))}
@@ -675,6 +687,7 @@ export default function ChessBoard({
           </div>
         </div>
 
+        {/* AI 해설 비활성화 중 — ANTHROPIC_API_KEY 설정 후 아래 주석 해제
         <div className={styles.levelToggle}>
           <button
             className={`${styles.levelBtn} ${currentLevel === 'beginner' ? styles.levelActive : ''}`}
@@ -685,6 +698,7 @@ export default function ChessBoard({
             onClick={() => setCurrentLevel('intermediate')}
           >중급자</button>
         </div>
+        */}
 
         <div className={styles.card}>
           <div className={styles.cardLabel}>수순</div>
@@ -696,6 +710,7 @@ export default function ChessBoard({
           />
         </div>
 
+        {/* AI 해설 비활성화 중 — ANTHROPIC_API_KEY 설정 후 아래 주석 해제
         <AIExplanation
           fen={fen}
           lastMove={aiLastMoveSan}
@@ -703,6 +718,7 @@ export default function ChessBoard({
           label={currentLabel}
           level={currentLevel}
         />
+        */}
       </div>
 
       <DebugPanel sfLogRef={rawLogRef} bookLogRef={bookLogRef} classifyLogRef={classifyLogRef} />
