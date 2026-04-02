@@ -172,27 +172,72 @@
 
 .debugBookMoves {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.debugBookMove {
-  font-size: 9px;
-  color: #555;
-  padding: 1px 4px;
-  border-radius: 2px;
-  background: #141414;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .debugBookMovePlayed {
+  background: #1e1810 !important;
+  border-left: 2px solid #a08060;
+}
+
+.debugBookMovePlayed .debugBookMoveSan {
   color: #a08060;
-  background: #1e1810;
-  border: 0.5px solid #a0806044;
+}
+
+.debugBookError {
+  font-size: 9px;
+  color: #e04040;
+  margin: 2px 0;
+}
+
+.debugBookRaw {
+  margin: 4px 0;
+}
+
+.debugBookRawHeader {
+  font-size: 9px;
+  color: #555;
+  padding: 2px 4px;
+  background: #111;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.debugBookMoveRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  font-size: 9px;
+  border-radius: 2px;
+}
+
+.debugBookMoveRow:hover {
+  background: #1a1a1a;
+}
+
+.debugBookMoveSan {
+  font-weight: 600;
+  color: #888;
+  min-width: 36px;
+}
+
+.debugBookMoveUci {
+  color: #444;
+  min-width: 40px;
 }
 
 .debugBookMoveGames {
-  color: #333;
+  color: #666;
+  min-width: 40px;
+  text-align: right;
+}
+
+.debugBookMoveWDL {
+  color: #444;
   font-size: 8px;
+  min-width: 60px;
 }
 
 /* Classify 로그 */

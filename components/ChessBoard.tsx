@@ -272,14 +272,30 @@ function DebugPanel({
             <div className={styles.debugBookPlayed}>
               played: <span className={entry.isBook ? styles.debugBest : ''}>{entry.playedUci}</span>
             </div>
+            {entry.error && <div className={styles.debugBookError}>error: {entry.error}</div>}
+            {entry.raw && (
+              <div className={styles.debugBookRaw}>
+                <div className={styles.debugBookRawHeader}>
+                  API: W {entry.raw.white} / D {entry.raw.draws} / B {entry.raw.black} = {entry.totalGames}
+                </div>
+              </div>
+            )}
             <div className={styles.debugBookMoves}>
               {entry.moves.map((m, j) => (
-                <span
+                <div
                   key={j}
-                  className={`${styles.debugBookMove} ${m.uci === entry.playedUci ? styles.debugBookMovePlayed : ''}`}
+                  className={`${styles.debugBookMoveRow} ${m.uci === entry.playedUci ? styles.debugBookMovePlayed : ''}`}
                 >
-                  {m.san} <span className={styles.debugBookMoveGames}>({m.games})</span>
-                </span>
+                  <span className={styles.debugBookMoveSan}>{m.san}</span>
+                  <span className={styles.debugBookMoveUci}>{m.uci}</span>
+                  <span className={styles.debugBookMoveGames}>{m.games}</span>
+                  <span className={styles.debugBookMoveWDL}>
+                    {m.white}/{m.draws}/{m.black}
+                  </span>
+                  <span className={m.isBook ? styles.debugBookMatch : styles.debugBookMiss}>
+                    {m.isBook ? '✓' : '✗'}
+                  </span>
+                </div>
               ))}
               {entry.moves.length === 0 && <span className={styles.debugInfo}>no master games</span>}
             </div>
@@ -328,6 +344,7 @@ interface PendingClassify {
   isSacrifice: boolean;
   legalMoveCount: number;
   moveIdx: number;
+  preLines: { moves: string; cp: number; mate: number | null }[];
 }
 
 const PIECE_VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
@@ -382,7 +399,7 @@ export default function ChessBoard({
         best_uci: pending.bestUci,
         turn: pending.turn,
         is_sacrifice: pending.isSacrifice,
-        top_lines: sfResult.lines,
+        top_lines: pending.preLines,
         legal_move_count: pending.legalMoveCount,
         is_book: book,
       });
@@ -431,20 +448,18 @@ export default function ChessBoard({
     if (!move) return false;
 
     // 희생수 판별:
-    // 1) 캡처 희생: 비싼 기물로 싼 기물을 잡음 (퀸으로 폰 잡기 등)
-    // 2) Non-capture 희생: 기물을 상대가 잡을 수 있는 칸에 놓음
-    //    (나이트를 적진에 던지기, 비숍을 걸기 등)
-    // 실제로 좋은 희생인지는 Stockfish eval이 판단 (brilliant 조건에서 체크)
+    // g는 이미 수를 둔 후 상태 (상대 차례)
+    // 상대가 방금 둔 칸을 되잡을 수 있는지 체크 (vulnerability)
     const isCapture = move.flags.includes('c') || move.flags.includes('e');
     const movedValue = PIECE_VALUE[move.piece] ?? 0;
     const capturedValue = PIECE_VALUE[move.captured ?? ''] ?? 0;
-    const captureSacrifice = isCapture && movedValue > capturedValue;
-
-    // g는 이미 수를 둔 후 상태 (상대 차례)
-    // 상대의 합법수 중 방금 둔 칸을 잡는 수가 있으면 기물이 위험
-    const isHanging = movedValue >= 3 &&
+    const isVulnerable = movedValue >= 3 &&
       g.moves({ verbose: true }).some(m => m.to === move.to);
-    const nonCaptureSacrifice = !isCapture && isHanging;
+
+    // 캡처 희생: 비싼 기물로 싼 기물을 잡고, 되잡힐 수 있음
+    const captureSacrifice = isCapture && movedValue > capturedValue && isVulnerable;
+    // Non-capture 희생: 기물을 상대가 잡을 수 있는 칸에 놓음
+    const nonCaptureSacrifice = !isCapture && isVulnerable;
 
     const isSacrifice = captureSacrifice || nonCaptureSacrifice;
 
@@ -463,6 +478,7 @@ export default function ChessBoard({
       isSacrifice,
       legalMoveCount,
       moveIdx,
+      preLines: sfForPos?.lines ?? [],
     };
 
     setFenHistory(newFenHist);

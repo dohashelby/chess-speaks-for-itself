@@ -21,10 +21,12 @@ export interface ExplorerResponse {
 export interface BookLogEntry {
   fen: string;
   totalGames: number;
-  moves: { san: string; uci: string; games: number; isBook: boolean }[];
+  moves: { san: string; uci: string; games: number; white: number; draws: number; black: number; isBook: boolean }[];
   playedUci: string | null;
   isBook: boolean;
   timestamp: number;
+  raw: ExplorerResponse | null;
+  error: string | null;
 }
 
 const EXPLORER_URL = '/api/opening';
@@ -64,25 +66,33 @@ export function useOpeningBook() {
   }, []);
 
   const isBookMove = useCallback(async (fen: string, uci: string): Promise<boolean> => {
-    const data = await fetchExplorer(fen);
+    let data: ExplorerResponse | null = null;
+    let error: string | null = null;
+    try {
+      data = await fetchExplorer(fen);
+    } catch (e) {
+      error = String(e);
+    }
+
     const totalGames = data ? data.white + data.draws + data.black : 0;
 
     const moves = (data?.moves ?? []).map(m => {
       const games = m.white + m.draws + m.black;
-      return { san: m.san, uci: m.uci, games, isBook: games >= MIN_GAMES };
+      return { san: m.san, uci: m.uci, games, white: m.white, draws: m.draws, black: m.black, isBook: games >= MIN_GAMES };
     });
 
     const isBook = totalGames >= MIN_GAMES &&
       moves.some(m => m.uci === uci && m.isBook);
 
-    // 로그 추가
     const entry: BookLogEntry = {
       fen,
       totalGames,
-      moves: moves.slice(0, 8), // 상위 8개만
+      moves: moves.slice(0, 8),
       playedUci: uci,
       isBook,
       timestamp: Date.now(),
+      raw: data,
+      error,
     };
     const log = logRef.current;
     log.push(entry);
