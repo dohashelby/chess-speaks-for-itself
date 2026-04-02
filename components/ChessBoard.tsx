@@ -5,7 +5,7 @@ import { Chess, Square } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import { useStockfish, SFResult } from '@/lib/useStockfish';
 import { classifyMove, MoveLabel, LABEL_META } from '@/lib/moveClassifier';
-import { useOpeningBook } from '@/lib/useOpeningBook';
+import { useOpeningBook, BookLogEntry } from '@/lib/useOpeningBook';
 import styles from './ChessBoard.module.css';
 
 // ── Eval Bar ──────────────────────────────────────────────
@@ -28,7 +28,7 @@ function EvalBar({ value, mate }: { value: number; mate: number | null }) {
 // ── 라벨 뱃지 ─────────────────────────────────────────────
 function LabelBadge({ label }: { label: MoveLabel }) {
   const meta = LABEL_META[label];
-  if (!meta.symbol && label === 'good') return null;
+  if (label === 'good' || label === 'forced') return null;
   return (
     <span
       className={styles.labelBadge}
@@ -185,32 +185,50 @@ function MoveList({
   );
 }
 
-// ── SF 디버그 패널 ────────────────────────────────────────
-function SFDebugPanel({ logRef }: { logRef: React.RefObject<string[]> }) {
+// ── 디버그 패널 ──────────────────────────────────────────
+function DebugPanel({
+  sfLogRef,
+  bookLogRef,
+}: {
+  sfLogRef: React.RefObject<string[]>;
+  bookLogRef: React.RefObject<BookLogEntry[]>;
+}) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  const [log, setLog] = useState<string[]>([]);
+  const [sfLog, setSfLog] = useState<string[]>([]);
+  const [bookLog, setBookLog] = useState<BookLogEntry[]>([]);
+  const [tab, setTab] = useState<'sf' | 'book'>('sf');
 
   useEffect(() => {
     const id = setInterval(() => {
-      const current = logRef.current;
-      if (current) setLog([...current]);
+      if (sfLogRef.current) setSfLog([...sfLogRef.current]);
+      if (bookLogRef.current) setBookLog([...bookLogRef.current]);
     }, 200);
     return () => clearInterval(id);
-  }, [logRef]);
+  }, [sfLogRef, bookLogRef]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [log.length]);
+  }, [sfLog.length, bookLog.length, tab]);
 
   return (
     <div className={styles.debugPanel}>
       <div className={styles.debugHeader}>
         <span className={styles.debugDot} />
-        <span className={styles.debugTitle}>SF RAW LOG</span>
-        <span className={styles.debugCount}>{log.length} lines</span>
+        <button
+          className={`${styles.debugTab} ${tab === 'sf' ? styles.debugTabActive : ''}`}
+          onClick={() => setTab('sf')}
+        >
+          SF LOG <span className={styles.debugCount}>{sfLog.length}</span>
+        </button>
+        <button
+          className={`${styles.debugTab} ${tab === 'book' ? styles.debugTabActive : ''}`}
+          onClick={() => setTab('book')}
+        >
+          BOOK <span className={styles.debugCount}>{bookLog.length}</span>
+        </button>
       </div>
       <div className={styles.debugBody}>
-        {log.map((line, i) => (
+        {tab === 'sf' && sfLog.map((line, i) => (
           <div
             key={i}
             className={`${styles.debugLine} ${
@@ -221,6 +239,31 @@ function SFDebugPanel({ logRef }: { logRef: React.RefObject<string[]> }) {
           >
             <span className={styles.debugIdx}>{i}</span>
             {line}
+          </div>
+        ))}
+        {tab === 'book' && bookLog.map((entry, i) => (
+          <div key={i} className={styles.debugBookEntry}>
+            <div className={styles.debugBookHeader}>
+              <span className={entry.isBook ? styles.debugBookMatch : styles.debugBookMiss}>
+                {entry.isBook ? '📖 BOOK' : '— NOT BOOK'}
+              </span>
+              <span className={styles.debugBookGames}>{entry.totalGames.toLocaleString()} master games</span>
+            </div>
+            <div className={styles.debugBookFen}>{entry.fen.split(' ').slice(0, 2).join(' ')} ...</div>
+            <div className={styles.debugBookPlayed}>
+              played: <span className={entry.isBook ? styles.debugBest : ''}>{entry.playedUci}</span>
+            </div>
+            <div className={styles.debugBookMoves}>
+              {entry.moves.map((m, j) => (
+                <span
+                  key={j}
+                  className={`${styles.debugBookMove} ${m.uci === entry.playedUci ? styles.debugBookMovePlayed : ''}`}
+                >
+                  {m.san} <span className={styles.debugBookMoveGames}>({m.games})</span>
+                </span>
+              ))}
+              {entry.moves.length === 0 && <span className={styles.debugInfo}>no master games</span>}
+            </div>
           </div>
         ))}
         <div ref={bottomRef} />
@@ -274,7 +317,7 @@ export default function ChessBoard({
 
   const pendingRef = useRef<PendingClassify | null>(null);
   const { result: sfResult, isReady, isAnalyzing, evaluate, stop, rawLogRef } = useStockfish();
-  const { isBookMove } = useOpeningBook();
+  const { isBookMove, bookLogRef } = useOpeningBook();
 
   // Stockfish 준비되면 현재 포지션 즉시 분석 (첫 수 전 baseline 확보)
   useEffect(() => {
@@ -599,7 +642,7 @@ export default function ChessBoard({
         />
       </div>
 
-      <SFDebugPanel logRef={rawLogRef} />
+      <DebugPanel sfLogRef={rawLogRef} bookLogRef={bookLogRef} />
     </div>
   );
 }
