@@ -14,8 +14,8 @@ export type MoveLabel =
   | 'excellent'   // 우수   ○
   | 'good'        // 양호   (무라벨)
   | 'book'        // 이론수 📖
-  | 'inaccuracy'  // 부정확 ?
-  | 'mistake'     // 실수   ?!
+  | 'inaccuracy'  // 부정확 ?!
+  | 'mistake'     // 실수   ?
   | 'blunder'     // 블런더 ??
   | 'miss'        // 見落   ✗
   | 'forced'      // 강제수 (합법수 1개)
@@ -256,8 +256,8 @@ export const LABEL_META: Record<MoveLabel, {
   good:       { ko: '양호',   symbol: '',    color: '#888',    bg: 'transparent', priority: 7 },
   book:       { ko: '이론수', symbol: '📖',  color: '#a08060', bg: '#2a2010', priority: 8 },
   forced:     { ko: '강제수', symbol: '—',   color: '#666',    bg: 'transparent', priority: 8 },
-  inaccuracy: { ko: '부정확', symbol: '?',   color: '#f0c040', bg: '#3a2d00', priority: 4 },
-  mistake:    { ko: '실수',   symbol: '?!',  color: '#e07000', bg: '#3a1c00', priority: 3 },
+  inaccuracy: { ko: '부정확', symbol: '?!',  color: '#f0c040', bg: '#3a2d00', priority: 4 },
+  mistake:    { ko: '실수',   symbol: '?',   color: '#e07000', bg: '#3a1c00', priority: 3 },
   blunder:    { ko: '블런더', symbol: '??',  color: '#e04040', bg: '#3a0000', priority: 2 },
   miss:       { ko: '見落',   symbol: '✗',   color: '#e04040', bg: '#3a0000', priority: 2 },
 };
