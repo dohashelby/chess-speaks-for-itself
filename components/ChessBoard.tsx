@@ -43,8 +43,13 @@ function uciSequenceToSan(fen: string, uciMoves: string): string {
 
 // ── Eval Bar ──────────────────────────────────────────────
 function EvalBar({ value, mate }: { value: number; mate: number | null }) {
-  const clamp = Math.min(45, Math.max(-45, value * 6));
-  const whitePct = 50 + clamp;
+  let whitePct: number;
+  if (mate !== null) {
+    whitePct = mate > 0 ? 100 : 0;
+  } else {
+    const clamp = Math.min(45, Math.max(-45, value * 6));
+    whitePct = 50 + clamp;
+  }
   const label = mate !== null
     ? `M${Math.abs(mate)}`
     : `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
@@ -77,12 +82,14 @@ function AIExplanation({
   fen,
   lastMove,
   sfResult,
+  preSfResult,
   label,
   level,
 }: {
   fen: string;
   lastMove: string;
   sfResult: SFResult | null;
+  preSfResult: SFResult | null;
   label: MoveLabel | null;
   level: 'beginner' | 'intermediate';
 }) {
@@ -111,7 +118,7 @@ function AIExplanation({
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fen, lastMove, sfResult, label: label ?? 'good', level }),
+        body: JSON.stringify({ fen, lastMove, sfResult, preSfResult, label: label ?? 'good', level }),
         signal: ctrl.signal,
       });
       if (!res.ok) { setText('오류가 발생했습니다.'); return; }
@@ -134,9 +141,11 @@ function AIExplanation({
     } finally {
       setLoading(false);
     }
-  }, [fen, lastMove, sfResult, label, level]);
+  }, [fen, lastMove, sfResult, preSfResult, label, level]);
 
-  const ready = !!sfResult && sfResult.fen === fen && !!lastMove;
+  const hasMove = !!lastMove;
+  const ready = !!sfResult && sfResult.fen === fen && hasMove;
+  const analyzing = hasMove && !ready && !loading;
 
   return (
     <div className={styles.aiBox}>
@@ -144,8 +153,14 @@ function AIExplanation({
         <span className={`${styles.aiDot} ${loading ? styles.aiDotPulse : ''}`} />
         <span className={styles.aiLabel}>AI 해설</span>
         {sfResult && <span className={styles.aiDepth}>depth {sfResult.depth}</span>}
-        {ready && !loading && (
-          <button className={styles.explainBtn} onClick={fetchExplanation}>
+        {hasMove && !loading && (
+          <button
+            className={styles.explainBtn}
+            onClick={fetchExplanation}
+            disabled={!ready}
+            style={!ready ? { opacity: 0.35, cursor: 'not-allowed' } : undefined}
+            title={analyzing ? 'Stockfish 분석 중...' : undefined}
+          >
             {text ? '다시 듣기' : '설명 듣기'}
           </button>
         )}
@@ -155,7 +170,7 @@ function AIExplanation({
           ? <span className={styles.aiPlaceholder}>해설 생성 중...</span>
           : text || (
             <span className={styles.aiPlaceholder}>
-              {ready ? '"설명 듣기"를 눌러 AI 해설을 불러오세요' : '기물을 이동하면 분석합니다'}
+              {analyzing ? 'Stockfish 분석 중...' : ready ? '"설명 듣기"를 눌러 AI 해설을 불러오세요' : '기물을 이동하면 분석합니다'}
             </span>
           )
         }
@@ -368,9 +383,13 @@ export default function ChessBoard({
   const [aiLastMoveSan, setAiLastMoveSan] = useState('');
 
   const pendingRef = useRef<PendingClassify | null>(null);
+  const evalDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const classifyLogRef = useRef<ClassifyLogEntry[]>([]);
   const { result: sfResult, isReady, isAnalyzing, evaluate, stop, rawLogRef } = useStockfish();
-  const { isBookMove, bookLogRef } = useOpeningBook();
+  const { isBookMove, getOpeningName, bookLogRef } = useOpeningBook();
+  const [openingName, setOpeningName] = useState<string | null>(null);
+  const [displayEval, setDisplayEval] = useState<{ eval: number; mate: number | null }>({ eval: 0, mate: null });
+  const [preSfResult, setPreSfResult] = useState<SFResult | null>(null);
 
   // Stockfish 준비되면 현재 포지션 즉시 분석 (첫 수 전 baseline 확보)
   useEffect(() => {
@@ -379,14 +398,30 @@ export default function ChessBoard({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady]);
 
+  // FEN 바뀔 때마다 오프닝 이름 조회 (이름이 있을 때만 업데이트 — 이론 범위 벗어나도 마지막 이름 유지)
+  useEffect(() => {
+    getOpeningName(fen).then(name => { if (name) setOpeningName(name); });
+  }, [fen, getOpeningName]);
+
+  // sfResult가 현재 FEN과 일치할 때만 eval 업데이트 — 분석 중 이전 값 유지
+  // 체크메이트는 Stockfish 결과 없이 chess.js로 직접 감지
+  useEffect(() => {
+    if (gameRef.current.isCheckmate()) {
+      const loser = gameRef.current.turn(); // 움직여야 하는데 못하는 쪽 = 진 쪽
+      setDisplayEval({ eval: loser === 'b' ? 99 : -99, mate: loser === 'b' ? 1 : -1 });
+    } else if (sfResult && sfResult.fen === fen) {
+      setDisplayEval({ eval: sfResult.eval, mate: sfResult.mate ?? null });
+    }
+  }, [sfResult, fen]);
+
   // SF 결과가 오면 라벨 분류 (book move 체크 포함)
   useEffect(() => {
     const pending = pendingRef.current;
     if (!pending || !sfResult) return;
     pendingRef.current = null;
 
-    const classify = () => {
-      const book = isBookMove(pending.fenBefore, pending.playedUci);
+    const classify = async () => {
+      const book = await isBookMove(pending.fenBefore, pending.playedUci);
 
       const result = classifyMove({
         eval_before: pending.evalBefore,
@@ -482,6 +517,7 @@ export default function ChessBoard({
     setSanHistory(newSanHist);
     setMoveLabels(prev => [...prev.slice(0, moveIdx), null]);
     setCurrentLabel(null);
+    setPreSfResult(sfForPos);
     setCurrentIdx(newFenHist.length - 1);
     setFen(newFen);
     setLastMove({ from, to });
@@ -558,7 +594,7 @@ export default function ChessBoard({
       ? { from: history.at(-1)!.from as Square, to: history.at(-1)!.to as Square }
       : null);
     setAiLastMoveSan(g.history().at(-1) ?? '');
-    evaluate(g.fen());
+    evaluate(g.fen(), 15);
   }, [pgnInput, evaluate]);
 
   // 수순 이동
@@ -571,8 +607,11 @@ export default function ChessBoard({
     setSelected(null);
     setLegalDests([]);
     setCurrentLabel(moveLabels[idx - 1] ?? null);
+    setPreSfResult(null);
     setAiLastMoveSan(sanHistory[idx - 1] ?? '');
-    evaluate(f);
+    // debounce: 연속 클릭 시 마지막 포지션만 분석
+    if (evalDebounceRef.current) clearTimeout(evalDebounceRef.current);
+    evalDebounceRef.current = setTimeout(() => { evaluate(f, 15); }, 300);
   }, [fenHistory, moveLabels, sanHistory, evaluate]);
 
   // 리셋
@@ -588,10 +627,13 @@ export default function ChessBoard({
     setSanHistory([]);
     setMoveLabels([]);
     setCurrentLabel(null);
+    setPreSfResult(null);
     setCurrentIdx(0);
     setPgnInput('');
     setPgnError('');
-    setAiLastMoveSan('');
+    // setAiLastMoveSan('');
+    setOpeningName(null);
+    setDisplayEval({ eval: 0, mate: null });
     stop();
     evaluate(new Chess().fen()); // 초기 포지션 재분석 (sfResult stale 방지)
   }, [stop, evaluate]);
@@ -607,7 +649,7 @@ export default function ChessBoard({
     <div className={styles.root}>
       <div className={styles.boardCol}>
         <div className={styles.boardRow}>
-          <EvalBar value={sfResult?.eval ?? 0} mate={sfResult?.mate ?? null} />
+          <EvalBar value={displayEval.eval} mate={displayEval.mate} />
           {/* data-square 속성 이벤트 델리게이션으로 dnd-kit 우회 */}
           <div
             className={styles.boardWrap}
@@ -686,7 +728,6 @@ export default function ChessBoard({
           </div>
         </div>
 
-        {/* AI 해설 비활성화 중 — ANTHROPIC_API_KEY 설정 후 아래 주석 해제
         <div className={styles.levelToggle}>
           <button
             className={`${styles.levelBtn} ${currentLevel === 'beginner' ? styles.levelActive : ''}`}
@@ -697,10 +738,12 @@ export default function ChessBoard({
             onClick={() => setCurrentLevel('intermediate')}
           >중급자</button>
         </div>
-        */}
 
         <div className={styles.card}>
-          <div className={styles.cardLabel}>수순</div>
+          <div className={styles.cardLabel}>
+            수순
+            {openingName && <span className={styles.openingName}>{openingName}</span>}
+          </div>
           <MoveList
             history={sanHistory}
             labels={moveLabels}
@@ -709,15 +752,14 @@ export default function ChessBoard({
           />
         </div>
 
-        {/* AI 해설 비활성화 중 — ANTHROPIC_API_KEY 설정 후 아래 주석 해제
         <AIExplanation
           fen={fen}
           lastMove={aiLastMoveSan}
           sfResult={sfResult}
+          preSfResult={preSfResult}
           label={currentLabel}
           level={currentLevel}
         />
-        */}
       </div>
 
       <DebugPanel sfLogRef={rawLogRef} bookLogRef={bookLogRef} classifyLogRef={classifyLogRef} />

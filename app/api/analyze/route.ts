@@ -5,7 +5,31 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { Chess, Square } from 'chess.js';
 import { MoveLabel } from '@/lib/moveClassifier';
+
+function uciToSan(fen: string, uci: string): string {
+  if (!uci) return '';
+  try {
+    const chess = new Chess(fen);
+    const move = chess.move({ from: uci.slice(0, 2) as Square, to: uci.slice(2, 4) as Square, promotion: uci[4] as 'q' | 'r' | 'b' | 'n' | undefined });
+    return move?.san ?? uci;
+  } catch { return uci; }
+}
+
+function uciSequenceToSan(fen: string, uciMoves: string): string {
+  const chess = new Chess(fen);
+  const sans: string[] = [];
+  for (const uci of uciMoves.split(' ')) {
+    if (!uci) continue;
+    try {
+      const move = chess.move({ from: uci.slice(0, 2) as Square, to: uci.slice(2, 4) as Square, promotion: uci[4] as 'q' | 'r' | 'b' | 'n' | undefined });
+      if (!move) break;
+      sans.push(move.san);
+    } catch { break; }
+  }
+  return sans.join(' ');
+}
 
 // ── Provider 설정 ────────────────────────────────────────────
 type Provider = 'anthropic' | 'openai' | 'gemini';
@@ -47,19 +71,24 @@ const LABEL_TONE: Partial<Record<MoveLabel, string>> = {
   miss:
     '이 수는 메이트 또는 결정적 이득을 놓친 수입니다. 어떤 기회를 놓쳤는지 구체적으로 설명하세요.',
   mistake:
-    '이 수는 실수(Mistake ?!)입니다. 최선수 대비 무엇을 놓쳤는지, 어떤 약점이 생겼는지 설명하세요.',
+    '이 수는 실수(Mistake ?)입니다. 최선수 대비 무엇을 놓쳤는지, 어떤 약점이 생겼는지 설명하세요.',
   inaccuracy:
-    '이 수는 부정확한 수(Inaccuracy ?)입니다. 최선수 대비 어떤 포지셔널/전술적 차이가 있는지 설명하세요.',
+    '이 수는 부정확한 수(Inaccuracy ?!)입니다. 최선수 대비 어떤 포지셔널/전술적 차이가 있는지 설명하세요.',
 };
 
 function buildPrompt(params: {
   fen: string;
   lastMove: string;
   sfResult: SFResult;
+  preSfResult: SFResult | null;
   label: MoveLabel;
   level: 'beginner' | 'intermediate';
 }): string {
-  const { fen, lastMove, sfResult, label, level } = params;
+  const { fen, lastMove, sfResult, preSfResult, label, level } = params;
+
+  // FEN의 현재 차례는 방금 수를 둔 쪽의 반대
+  const currentTurn = fen.split(' ')[1] ?? 'w';
+  const movedBy = currentTurn === 'w' ? '흑(Black)' : '백(White)';
 
   const evalStr =
     sfResult.mate !== null
@@ -67,7 +96,7 @@ function buildPrompt(params: {
       : `${sfResult.eval > 0 ? '+' : ''}${sfResult.eval.toFixed(2)}`;
 
   const bestReadable = sfResult.bestMove
-    ? `${sfResult.bestMove.slice(0, 2).toUpperCase()}→${sfResult.bestMove.slice(2, 4).toUpperCase()}`
+    ? uciToSan(fen, sfResult.bestMove)
     : '없음';
 
   const topLines = sfResult.lines
@@ -77,7 +106,8 @@ function buildPrompt(params: {
         l.mate !== null
           ? `M${Math.abs(l.mate)}`
           : `${l.cp > 0 ? '+' : ''}${(l.cp / 100).toFixed(1)}`;
-      return `  ${i + 1}. ${l.moves.split(' ').slice(0, 6).join(' ')} (${score})`;
+      const sanMoves = uciSequenceToSan(fen, l.moves.split(' ').slice(0, 8).join(' '));
+      return `  라인${i + 1} (${score}): ${sanMoves}`;
     })
     .join('\n');
 
@@ -97,22 +127,54 @@ function buildPrompt(params: {
 - 변화수 근거 1~2개 언급, 포지셔널·전술 이유 병행
 - 4~5문장, "~합니다" 체로 전문적으로`;
 
+  const opponent = currentTurn === 'w' ? '백(White)' : '흑(Black)';
+
+  // 수 두기 전 포지션의 Stockfish 라인 (movedBy가 뒀어야 할 수)
+  const preLines = preSfResult
+    ? preSfResult.lines
+        .slice(0, 3)
+        .map((l, i) => {
+          const score = l.mate !== null
+            ? `M${Math.abs(l.mate)}`
+            : `${l.cp > 0 ? '+' : ''}${(l.cp / 100).toFixed(1)}`;
+          const sanMoves = uciSequenceToSan(preSfResult.fen, l.moves.split(' ').slice(0, 8).join(' '));
+          return `  라인${i + 1} (${score}): ${sanMoves}`;
+        })
+        .join('\n')
+    : null;
+
+  const preBestReadable = preSfResult?.bestMove
+    ? uciToSan(preSfResult.fen, preSfResult.bestMove)
+    : null;
+
   return `당신은 체스 코치입니다.
 ${levelInstruction}
 
+바로 해설 내용만 출력하세요. "코치로서", "설명해 드리겠습니다" 같은 도입 멘트는 생략하세요.
+
+[SAN 표기 안내] 소문자로 시작하는 수(b5, e4 등)는 폰(Pawn) 이동입니다. 대문자로 시작하는 수(Nf3, Bc4, Qh5 등)는 해당 기물의 이동입니다. 절대 기물을 혼동하지 마세요.
+
 현재 포지션 FEN: ${fen}
-방금 둔 수: ${lastMove}
+방금 둔 수: ${lastMove} — ${movedBy}이 방금 이 수를 뒀습니다
 수 평가 지시: ${labelInstruction}
 Stockfish 평가: ${evalStr} (depth ${sfResult.depth})
-추천 최선수: ${bestReadable}
+${preBestReadable ? `${movedBy}의 최선수 (뒀어야 할 수): ${preBestReadable}` : ''}
 
-Stockfish 상위 변화수:
+${preLines ? `Stockfish 라인 — ${movedBy}의 선택지 (${lastMove}을 두기 전 기준):
+${preLines}
+
+` : ''}Stockfish 라인 — ${lastMove} 이후 ${opponent}의 대응 (현재 포지션 기준):
 ${topLines}
 
+중요 규칙:
+- 위 Stockfish 라인에 실제로 등장하는 수만 근거로 사용하세요. 라인에 없는 수를 임의로 주장하지 마세요.
+- 구체적인 수를 SAN 표기로 언급하며 설명하세요.
+- 메이트가 있다면 라인1의 수순을 따라 정확히 설명하세요.
+
 설명 구성:
-1. 이 수의 핵심 문제 또는 장점 (라벨 근거 명확히)
-2. 최선수 ${bestReadable}가 왜 더 좋은지 구체적 이유
-3. 이 포지션의 교훈 또는 주목할 아이디어
+1. ${movedBy}이 뒀어야 할 수 — "${preBestReadable ?? '최선수'}을 뒀어야 합니다" 형식으로, 왜 그 수가 좋은지 설명
+2. ${lastMove}를 뒀을 때 발생하는 결과 — 이후 라인1 수순을 따라 "상대가 Y를 두면, 이후 Z로 이어집니다" 형식으로 구체적으로
+3. 한 줄 교훈
 
 수치를 그대로 읽지 말고 의미로 설명하세요.`;
 }
@@ -125,11 +187,12 @@ export async function POST(req: Request) {
       fen: string;
       lastMove: string;
       sfResult: SFResult;
+      preSfResult?: SFResult | null;
       label?: MoveLabel;
       level?: 'beginner' | 'intermediate';
     };
 
-    const { fen, lastMove, sfResult, label = 'good', level = 'intermediate' } = body;
+    const { fen, lastMove, sfResult, preSfResult = null, label = 'good', level = 'intermediate' } = body;
 
     if (!fen || !sfResult) {
       return new Response(
@@ -138,7 +201,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const prompt = buildPrompt({ fen, lastMove, sfResult, label, level });
+    const prompt = buildPrompt({ fen, lastMove, sfResult, preSfResult, label, level });
 
     const encoder = new TextEncoder();
     const readableStream = new ReadableStream({
