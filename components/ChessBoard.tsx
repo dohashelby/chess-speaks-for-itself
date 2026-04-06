@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Chess, Square } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
-import { useStockfish, SFResult } from '@/lib/useStockfish';
+import { useStockfish, SFResult, SFLine } from '@/lib/useStockfish';
 import { classifyMove, MoveLabel, LABEL_META } from '@/lib/moveClassifier';
 import { useOpeningBook, BookLogEntry } from '@/lib/useOpeningBook';
 import styles from './ChessBoard.module.css';
@@ -346,6 +346,27 @@ export interface ChessBoardProps {
   flipped?: boolean;
 }
 
+interface PgnMoveInfo {
+  uci: string;
+  turn: 'w' | 'b';
+  isSacrifice: boolean;
+  legalMoveCount: number;
+}
+
+interface PgnStoredEval {
+  eval: number;
+  bestEval: number;
+  bestUci: string;
+  lines: SFLine[];
+}
+
+interface PgnQueue {
+  fens: string[];
+  moveInfos: PgnMoveInfo[];
+  storedEvals: (PgnStoredEval | null)[];
+  nextIdx: number;  // next fens index to evaluate
+}
+
 interface PendingClassify {
   evalBefore: number;
   bestEval: number;
@@ -383,6 +404,7 @@ export default function ChessBoard({
   const [aiLastMoveSan, setAiLastMoveSan] = useState('');
 
   const pendingRef = useRef<PendingClassify | null>(null);
+  const pgnQueueRef = useRef<PgnQueue | null>(null);
   const evalDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const classifyLogRef = useRef<ClassifyLogEntry[]>([]);
   const { result: sfResult, isReady, isAnalyzing, evaluate, stop, rawLogRef } = useStockfish();
@@ -414,50 +436,87 @@ export default function ChessBoard({
     }
   }, [sfResult, fen]);
 
+  // PGN 배치 분류 완료 시 현재 보고 있는 수의 라벨 동기화
+  useEffect(() => {
+    if (currentIdx > 0) setCurrentLabel(moveLabels[currentIdx - 1] ?? null);
+  }, [moveLabels, currentIdx]);
+
   // SF 결과가 오면 라벨 분류 (book move 체크 포함)
   useEffect(() => {
+    if (!sfResult) return;
+
+    // ── 수동 플레이 분류 ──
     const pending = pendingRef.current;
-    if (!pending || !sfResult) return;
-    pendingRef.current = null;
+    if (pending) {
+      pendingRef.current = null;
+      const classify = async () => {
+        const book = await isBookMove(pending.fenBefore, pending.playedUci);
+        const result = classifyMove({
+          eval_before: pending.evalBefore,
+          eval_after: sfResult.eval,
+          best_eval: pending.bestEval,
+          played_uci: pending.playedUci,
+          best_uci: pending.bestUci,
+          turn: pending.turn,
+          is_sacrifice: pending.isSacrifice,
+          top_lines: pending.preLines,
+          legal_move_count: pending.legalMoveCount,
+          is_book: book,
+        });
+        const log = classifyLogRef.current;
+        log.push({ moveIdx: pending.moveIdx, played: pending.playedUci, label: result.label, reason: result.reason, debug: result.debug, timestamp: Date.now() });
+        if (log.length > 50) log.splice(0, log.length - 50);
+        setCurrentLabel(result.label);
+        setMoveLabels(prev => { const next = [...prev]; next[pending.moveIdx] = result.label; return next; });
+      };
+      classify();
+      return;
+    }
 
-    const classify = async () => {
-      const book = await isBookMove(pending.fenBefore, pending.playedUci);
+    // ── PGN 배치 분류 ──
+    const queue = pgnQueueRef.current;
+    if (!queue || sfResult.fen !== queue.fens[queue.nextIdx]) return;
 
-      const result = classifyMove({
-        eval_before: pending.evalBefore,
-        eval_after: sfResult.eval,
-        best_eval: pending.bestEval,
-        played_uci: pending.playedUci,
-        best_uci: pending.bestUci,
-        turn: pending.turn,
-        is_sacrifice: pending.isSacrifice,
-        top_lines: pending.preLines,
-        legal_move_count: pending.legalMoveCount,
-        is_book: book,
-      });
+    const idx = queue.nextIdx;
+    const bestEval = sfResult.lines[0]?.mate != null
+      ? (sfResult.lines[0].mate > 0 ? 99 : -99)
+      : (sfResult.lines[0]?.cp ?? 0) / 100;
+    queue.storedEvals[idx] = { eval: sfResult.eval, bestEval, bestUci: sfResult.bestMove, lines: sfResult.lines };
 
-      // 분류 로그
-      const log = classifyLogRef.current;
-      log.push({
-        moveIdx: pending.moveIdx,
-        played: pending.playedUci,
-        label: result.label,
-        reason: result.reason,
-        debug: result.debug,
-        timestamp: Date.now(),
-      });
-      if (log.length > 50) log.splice(0, log.length - 50);
+    // 이전 수 분류 (idx >= 1이고 이전 eval이 있을 때)
+    if (idx >= 1) {
+      const beforeEval = queue.storedEvals[idx - 1];
+      if (beforeEval) {
+        const moveInfo = queue.moveInfos[idx - 1];
+        const fenBefore = queue.fens[idx - 1];
+        const evalAfter = sfResult.eval;
+        const moveIdx = idx - 1;
+        isBookMove(fenBefore, moveInfo.uci).then(book => {
+          const result = classifyMove({
+            eval_before: beforeEval.eval,
+            eval_after: evalAfter,
+            best_eval: beforeEval.bestEval,
+            played_uci: moveInfo.uci,
+            best_uci: beforeEval.bestUci,
+            turn: moveInfo.turn,
+            is_sacrifice: moveInfo.isSacrifice,
+            top_lines: beforeEval.lines,
+            legal_move_count: moveInfo.legalMoveCount,
+            is_book: book,
+          });
+          setMoveLabels(prev => { const next = [...prev]; next[moveIdx] = result.label; return next; });
+        });
+      }
+    }
 
-      setCurrentLabel(result.label);
-      setMoveLabels(prev => {
-        const next = [...prev];
-        next[pending.moveIdx] = result.label;
-        return next;
-      });
-    };
-
-    classify();
-  }, [sfResult, isBookMove]);
+    // 다음 FEN 평가
+    queue.nextIdx++;
+    if (queue.nextIdx < queue.fens.length) {
+      evaluate(queue.fens[queue.nextIdx], 15, 2000); // 배치 분석: 포지션당 최대 2초
+    } else {
+      pgnQueueRef.current = null;
+    }
+  }, [sfResult, isBookMove, evaluate]);
 
   // ── 이동 실행 (클릭/드래그 공통) ──
   const makeMove = useCallback((from: Square, to: Square): boolean => {
@@ -476,25 +535,33 @@ export default function ChessBoard({
     const legalMoveCount = g.moves().length;
     const fenBefore = g.fen();
 
-    const move = g.move({ from, to, promotion: 'q' });
+    let move;
+    try {
+      move = g.move({ from, to, promotion: 'q' });
+    } catch {
+      return false;
+    }
     if (!move) return false;
 
-    // 희생수 판별:
-    // g는 이미 수를 둔 후 상태 (상대 차례)
-    // 상대가 방금 둔 칸을 되잡을 수 있는지 체크 (vulnerability)
+    // 희생수 판별: 기물 점수 기준으로 손해를 보는 수만 희생수로 인정
     const isCapture = move.flags.includes('c') || move.flags.includes('e');
     const movedValue = PIECE_VALUE[move.piece] ?? 0;
     const capturedValue = PIECE_VALUE[move.captured ?? ''] ?? 0;
-    const isVulnerable = movedValue >= 3 &&
-      g.moves({ verbose: true }).some(m => m.to === move.to);
+    // 상대의 최소 가치 공격 기물 계산
+    const attackers = g.moves({ verbose: true }).filter(m => m.to === move.to);
+    const minAttackerValue = attackers.reduce(
+      (min, m) => Math.min(min, PIECE_VALUE[m.piece] ?? 0), Infinity
+    );
+    const hasAnyAttacker = minAttackerValue < Infinity;
 
-    // 캡처 희생: 비싼 기물로 싼 기물을 잡고, 되잡힐 수 있음
-    const captureSacrifice = isCapture && movedValue > capturedValue && isVulnerable;
-    // Non-capture 희생: 기물을 상대가 잡을 수 있는 칸에 놓음
-    const nonCaptureSacrifice = !isCapture && isVulnerable;
+    // 캡처 희생: 비싼 기물로 싼 기물 잡고, 상대가 되잡을 수 있음 → 기물 손해 확정
+    const captureSacrifice = isCapture && movedValue > capturedValue && hasAnyAttacker;
+    // Non-capture 희생: 상대 최소 공격 기물보다 내 기물이 비쌀 때만 (기물 점수 손해)
+    const nonCaptureSacrifice = !isCapture && hasAnyAttacker && minAttackerValue < movedValue;
 
     const isSacrifice = captureSacrifice || nonCaptureSacrifice;
 
+    pgnQueueRef.current = null; // 수동 플레이 시 배치 분류 중단
     const newFen = g.fen();
     const newFenHist = fenHistory.slice(0, currentIdx + 1).concat(newFen);
     const newSanHist = sanHistory.slice(0, currentIdx).concat(move.san);
@@ -582,10 +649,37 @@ export default function ChessBoard({
     const fenHist = [new Chess().fen()];
     const tempG = new Chess();
     for (const move of history) { tempG.move(move); fenHist.push(tempG.fen()); }
+
+    // PGN 분류 큐 구성: 각 수의 메타 정보 수집
+    const moveInfos: PgnMoveInfo[] = [];
+    const tempG2 = new Chess();
+    for (const move of history) {
+      const turn = tempG2.turn();
+      const legalMoveCount = tempG2.moves().length;
+      const m = tempG2.move(move);
+      const isCapture = m.flags.includes('c') || m.flags.includes('e');
+      const movedValue = PIECE_VALUE[m.piece] ?? 0;
+      const capturedValue = PIECE_VALUE[m.captured ?? ''] ?? 0;
+      const pgnAttackers = tempG2.moves({ verbose: true }).filter(mv => mv.to === m.to);
+      const pgnMinAttacker = pgnAttackers.reduce((min, mv) => Math.min(min, PIECE_VALUE[mv.piece] ?? 0), Infinity);
+      const pgnHasAttacker = pgnMinAttacker < Infinity;
+      const isSacrifice = (isCapture && movedValue > capturedValue && pgnHasAttacker) ||
+                          (!isCapture && pgnHasAttacker && pgnMinAttacker < movedValue);
+      moveInfos.push({ uci: `${m.from}${m.to}${m.promotion ?? ''}`, turn, isSacrifice, legalMoveCount });
+    }
+    pgnQueueRef.current = {
+      fens: fenHist,
+      moveInfos,
+      storedEvals: new Array(fenHist.length).fill(null),
+      nextIdx: 0,
+    };
+
     setFenHistory(fenHist);
     setSanHistory(g.history());
     setMoveLabels(new Array(history.length).fill(null));
     setCurrentLabel(null);
+    setOpeningName(null);
+    setPreSfResult(null);
     setCurrentIdx(fenHist.length - 1);
     setFen(g.fen());
     setSelected(null);
@@ -594,13 +688,15 @@ export default function ChessBoard({
       ? { from: history.at(-1)!.from as Square, to: history.at(-1)!.to as Square }
       : null);
     setAiLastMoveSan(g.history().at(-1) ?? '');
-    evaluate(g.fen(), 15);
+    // 큐 첫 번째 FEN부터 순차 평가 시작
+    evaluate(fenHist[0], 15, 2000);
   }, [pgnInput, evaluate]);
 
   // 수순 이동
   const jumpTo = useCallback((idx: number) => {
     const f = fenHistory[idx];
     if (!f) return;
+    pgnQueueRef.current = null; // 탐색 시작 시 배치 분류 중단
     gameRef.current = new Chess(f);
     setCurrentIdx(idx);
     setFen(f);
@@ -619,6 +715,7 @@ export default function ChessBoard({
     const g = new Chess();
     gameRef.current = g;
     pendingRef.current = null;
+    pgnQueueRef.current = null;
     setFen(g.fen());
     setSelected(null);
     setLegalDests([]);

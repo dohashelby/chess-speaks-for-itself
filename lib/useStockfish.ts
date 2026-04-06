@@ -20,7 +20,7 @@ interface UseStockfishReturn {
   result: SFResult | null;
   isReady: boolean;
   isAnalyzing: boolean;
-  evaluate: (fen: string, depth?: number) => void;
+  evaluate: (fen: string, depth?: number, movetime?: number) => void;
   stop: () => void;
   rawLogRef: React.RefObject<string[]>;
 }
@@ -120,13 +120,13 @@ export function useStockfish(): UseStockfishReturn {
     };
   }, []);
 
-  const evaluate = useCallback((fen: string, depth = 20) => {
+  const evaluate = useCallback((fen: string, depth = 20, movetime = 5000) => {
     if (!workerRef.current || !isReady) return;
     currentFenRef.current = fen;
     linesBuffer.current.clear();
     setResult(null); // clear stale result immediately
     setIsAnalyzing(true);
-    workerRef.current.postMessage({ type: 'evaluate', payload: { fen, depth } });
+    workerRef.current.postMessage({ type: 'evaluate', payload: { fen, depth, movetime } });
   }, [isReady]);
 
   const stop = useCallback(() => {

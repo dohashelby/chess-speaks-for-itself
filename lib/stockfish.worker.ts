@@ -28,7 +28,7 @@ self.onmessage = (e: MessageEvent) => {
       if (!sf) break;
       sf.postMessage('stop');
       sf.postMessage(`position fen ${payload.fen}`);
-      sf.postMessage(`go depth ${payload.depth ?? 20}`);
+      sf.postMessage(`go depth ${payload.depth ?? 20} movetime ${payload.movetime ?? 5000}`);
       break;
 
     case 'stop':
