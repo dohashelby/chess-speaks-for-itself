@@ -462,6 +462,7 @@ export default function ChessBoard({
           top_lines: pending.preLines,
           legal_move_count: pending.legalMoveCount,
           is_book: book,
+          fen_before: pending.fenBefore,
         });
         const log = classifyLogRef.current;
         log.push({ moveIdx: pending.moveIdx, played: pending.playedUci, label: result.label, reason: result.reason, debug: result.debug, timestamp: Date.now() });
@@ -503,6 +504,7 @@ export default function ChessBoard({
             top_lines: beforeEval.lines,
             legal_move_count: moveInfo.legalMoveCount,
             is_book: book,
+            fen_before: fenBefore,
           });
           setMoveLabels(prev => { const next = [...prev]; next[moveIdx] = result.label; return next; });
         });
@@ -614,8 +616,19 @@ export default function ChessBoard({
   }, [selected, legalDests, makeMove]);
 
   // 드래그 드롭 핸들러
+  const handlePieceDrag = useCallback(({ square }: { isSparePiece: boolean; piece: { pieceType: string }; square: string | null }) => {
+    if (!square) return;
+    const g = gameRef.current;
+    setSelected(square as Square);
+    setLegalDests(g.moves({ square: square as Square, verbose: true }).map(m => m.to as Square));
+  }, []);
+
   const handlePieceDrop = useCallback(({ sourceSquare, targetSquare }: { sourceSquare: string; targetSquare: string | null }) => {
-    if (!targetSquare || sourceSquare === targetSquare) return false;
+    if (!targetSquare || sourceSquare === targetSquare) {
+      setSelected(null);
+      setLegalDests([]);
+      return false;
+    }
     const success = makeMove(sourceSquare as Square, targetSquare as Square);
     if (!success) {
       setSelected(null);
@@ -759,6 +772,7 @@ export default function ChessBoard({
               options={{
                 position: fen,
                 onPieceDrop: handlePieceDrop,
+                onPieceDrag: handlePieceDrag,
                 squareStyles,
                 boardOrientation: flipped ? 'black' : 'white',
                 allowDrawingArrows: false,

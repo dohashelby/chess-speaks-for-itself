@@ -5,6 +5,8 @@
 // 모든 eval 값은 "백 시점 폰 단위"로 통일되어 들어옴 (useStockfish에서 정규화)
 // 흑에게 유리하면 음수, 백에게 유리하면 양수
 
+import { Chess, Square, PieceSymbol } from 'chess.js';
+
 // ── 타입 ─────────────────────────────────────────────────
 
 export type MoveLabel =
@@ -65,6 +67,16 @@ function playerWinPercent(evalWhitePawns: number, turn: 'w' | 'b'): number {
   return turn === 'w' ? wp : 100 - wp;
 }
 
+// 라인의 승률 계산 (mate 처리 포함)
+function lineWinPercent(line: { cp: number; mate: number | null } | undefined, turn: 'w' | 'b'): number {
+  if (!line) return 50;
+  if (line.mate !== null) {
+    const whiteWins = line.mate > 0;
+    return turn === 'w' ? (whiteWins ? 100 : 0) : (whiteWins ? 0 : 100);
+  }
+  return playerWinPercent(line.cp / 100, turn);
+}
+
 // ── 정확도 계산 (Lichess 표준) ──────────────────────────────
 
 function moveAccuracy(winDiff: number): number {
@@ -73,6 +85,178 @@ function moveAccuracy(winDiff: number): number {
   return Math.max(0, Math.min(100,
     103.1668 * Math.exp(-0.04354 * winDiff) - 3.1669
   ));
+}
+
+// ── Brilliant 판별 (WintrChess 로직) ─────────────────────────
+
+interface BP { square: Square; type: PieceSymbol; color: 'w' | 'b' }
+
+function boardPieces(board: Chess): BP[] {
+  return board.board().flat().filter((p): p is BP => p !== null);
+}
+
+function fenSetTurn(fen: string, turn: 'w' | 'b'): string {
+  const parts = fen.split(' ');
+  parts[1] = turn;
+  return parts.join(' ');
+}
+
+// 해당 기물을 직접 잡을 수 있는 상대 기물 목록
+function directAttackers(board: Chess, piece: BP): BP[] {
+  try {
+    const oppBoard = new Chess(fenSetTurn(board.fen(), piece.color === 'w' ? 'b' : 'w'));
+    return oppBoard.moves({ verbose: true })
+      .filter(m => m.to === piece.square && m.captured)
+      .map(m => ({ square: m.from as Square, type: m.piece as PieceSymbol, color: m.color as 'w' | 'b' }));
+  } catch { return []; }
+}
+
+const PIECE_VAL_BR: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 99 };
+
+// 기물이 안전한지 판단 (WintrChess pieceSafety 간소화 버전)
+function isPieceSafeBR(board: Chess, piece: BP): boolean {
+  const attackers = directAttackers(board, piece);
+  if (attackers.length === 0) return true;
+
+  // 더 낮은 가치의 공격자가 있으면 안전하지 않음
+  if (attackers.some(a => PIECE_VAL_BR[a.type] < PIECE_VAL_BR[piece.type])) return false;
+
+  // 방어자 수 확인
+  try {
+    const defBoard = new Chess(fenSetTurn(board.fen(), piece.color));
+    const defenders = defBoard.moves({ verbose: true }).filter(m => m.to === piece.square);
+    if (attackers.length > defenders.length) return false;
+  } catch {}
+
+  return true;
+}
+
+// 해당 색깔의 안전하지 않은 기물 목록 (폰·킹 제외)
+// capturedValue: 방금 잡은 기물의 가치 (이보다 가치가 높은 기물만 대상 — WintrChess 동일 조건)
+// 등가교환(나이트↔나이트 등) 후 재잡기는 희생이 아니므로 제외
+function getUnsafePiecesBR(board: Chess, color: 'w' | 'b', capturedValue = 0): BP[] {
+  return boardPieces(board).filter(p =>
+    p.color === color &&
+    p.type !== 'p' && p.type !== 'k' &&
+    PIECE_VAL_BR[p.type] > capturedValue &&
+    !isPieceSafeBR(board, p)
+  );
+}
+
+// 위험 기물을 잡았을 때 오히려 더 큰 위협이 생기는지 검사
+// WintrChess hasDangerLevels(equalityStrategy="leaves") 에 대응
+function hasCounterThreatProtection(board: Chess, unsafePiece: BP): boolean {
+  const attackers = directAttackers(board, unsafePiece);
+  if (attackers.length === 0) return true; // 공격자가 없으면 보호됨
+
+  return attackers.every(attacker => {
+    try {
+      // 상대가 해당 기물을 잡은 상황 시뮬레이션
+      const simBoard = new Chess(fenSetTurn(board.fen(), attacker.color));
+      simBoard.move({ from: attacker.square, to: unsafePiece.square });
+
+      // 잡은 후, 공격자의 색 기물 중 위험해진 기물이 있고
+      // 그 가치가 잡힌 기물 이상이면 → 역위협 존재
+      const newUnsafe = getUnsafePiecesBR(simBoard, attacker.color);
+      if (newUnsafe.some(p => PIECE_VAL_BR[p.type] >= PIECE_VAL_BR[unsafePiece.type])) return true;
+
+      // 잡은 후 체크메이트 가능하면 역위협 존재
+      if (simBoard.moves().some(m => m.includes('#'))) return true;
+
+      return false;
+    } catch { return false; }
+  });
+}
+
+// 기물이 갇혀 있는지 판단 (모든 도망 경로가 안전하지 않음)
+function isPieceTrappedBR(board: Chess, piece: BP): boolean {
+  if (isPieceSafeBR(board, piece)) return false;
+  try {
+    const moveBoard = new Chess(fenSetTurn(board.fen(), piece.color));
+    const moves = moveBoard.moves({ square: piece.square, verbose: true });
+    if (moves.length === 0) return true;
+    return moves.every(m => {
+      try {
+        const escapeBoard = new Chess(moveBoard.fen());
+        const escaped = escapeBoard.move(m);
+        return !isPieceSafeBR(escapeBoard, { ...piece, square: escaped.to as Square });
+      } catch { return true; }
+    });
+  } catch { return false; }
+}
+
+// WintrChess considerBrilliantClassification 포팅
+function considerBrilliant(
+  fenBefore: string,
+  playedUci: string,
+  played_best: boolean,
+  wpAfter: number,
+  secondLineCp: number | null,
+  secondLineMate: number | null,
+  turn: 'w' | 'b'
+): boolean {
+  if (!played_best) return false;
+
+  // 프로모션 수는 brilliant 불가
+  if (playedUci.length >= 5) return false;
+
+  // 수를 둔 후 유리해야 함 (Critical candidate: 지고 있으면 안됨)
+  if (wpAfter < 50) return false;
+
+  // 2순위 수가 이미 완전히 이기는 수라면 (700cp ≈ 97% 이상) brilliant 불가
+  if (secondLineCp !== null || secondLineMate !== null) {
+    const secondWp = lineWinPercent(
+      { cp: secondLineCp ?? 0, mate: secondLineMate ?? null },
+      turn
+    );
+    if (secondWp >= 97) return false;
+  }
+
+  try {
+    const beforeBoard = new Chess(fenBefore);
+
+    // 체크를 피하는 수는 brilliant 불가
+    if (beforeBoard.isCheck()) return false;
+
+    // 수 실행 및 잡은 기물 가치 추출
+    const afterBoard = new Chess(fenBefore);
+    const playedMove = afterBoard.move({
+      from: playedUci.slice(0, 2) as Square,
+      to: playedUci.slice(2, 4) as Square,
+    });
+    // 잡은 기물과 같은 가치 이하의 기물은 unsafe 대상에서 제외 (등가교환 재잡기)
+    const capturedValue = playedMove.captured ? (PIECE_VAL_BR[playedMove.captured] ?? 0) : 0;
+
+    const prevUnsafe = getUnsafePiecesBR(beforeBoard, turn);
+    const currUnsafe = getUnsafePiecesBR(afterBoard, turn, capturedValue);
+
+    // 안전한 곳으로 이동(unsafe 기물 감소)하면 brilliant 불가
+    if (currUnsafe.length < prevUnsafe.length) return false;
+
+    // 수 후 unsafe 기물이 없으면 brilliant 불가
+    if (currUnsafe.length === 0) return false;
+
+    // 모든 unsafe 기물이 역위협으로 보호되면 brilliant 불가
+    // (역위협이 있으면 진짜 희생이 아님)
+    const dangerLevelsProtected = currUnsafe.every(p => hasCounterThreatProtection(afterBoard, p));
+    if (dangerLevelsProtected) return false;
+
+    // Trapped piece 검사
+    const prevTrapped = prevUnsafe.filter(p => isPieceTrappedBR(beforeBoard, p));
+    const currTrapped = currUnsafe.filter(p => isPieceTrappedBR(afterBoard, p));
+
+    const movedFrom = playedUci.slice(0, 2) as Square;
+    const movedPieceWasTrapped = prevTrapped.some(p => p.square === movedFrom);
+
+    // 이미 갇혀 있던 기물을 희생하거나, 모든 unsafe 기물이 갇혀 있으면 brilliant 불가
+    if (movedPieceWasTrapped) return false;
+    if (currTrapped.length === currUnsafe.length) return false;
+    if (currTrapped.length < prevTrapped.length) return false;
+
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ── 핵심 분류 함수 ────────────────────────────────────────
@@ -89,6 +273,7 @@ export function classifyMove(params: {
   legal_move_count?: number;  // 합법수 개수 (1이면 강제수)
   is_book?: boolean;          // 오프닝 이론수 여부
   only_move_margin?: number;
+  fen_before?: string;        // brilliant 판별용 (수 두기 전 FEN)
 }): { label: MoveLabel; eval_loss: number; is_only_move: boolean; reason: string; debug: Record<string, number | string | boolean> } {
   const {
     eval_before,
@@ -101,7 +286,7 @@ export function classifyMove(params: {
     top_lines,
     legal_move_count,
     is_book = false,
-    only_move_margin = 0.5,
+    fen_before,
   } = params;
 
   // ── 강제수 (합법수 1개) ───────────────────────────────
@@ -125,10 +310,9 @@ export function classifyMove(params: {
 
   const played_best = played_uci === best_uci;
 
-  // 상위 라인 간 격차
-  // top_lines는 수를 둔 후 포지션의 SF 결과 (상대 차례)
-  // cp는 백 시점으로 정규화되어 있고, SF MultiPV는 현재 차례 기준 정렬
-  // → 절대값으로 1순위와 2순위의 차이를 측정
+  // 상위 라인 간 격차 (수 두기 전 포지션 기준)
+  // top_lines[0] = 최선수, top_lines[1] = 2순위
+  // cp는 백 시점 센티폰
   const bestCp   = top_lines[0]?.cp ?? 0;
   const secondCp = top_lines[1]?.cp ?? bestCp;
   const lineGap = Math.abs(bestCp - secondCp) / 100;
@@ -162,9 +346,21 @@ export function classifyMove(params: {
     return { label: 'miss', eval_loss: loss, is_only_move: false, reason: `메이트(M${Math.abs(bestMate!)}) 기회를 놓침 — 최선수: ${best_uci}`, debug: { ...d, bestMate } };
   }
 
-  // ── 탁월수 판별 ───────────────────────────────────────
-  if (played_best && is_sacrifice && wpDrop <= 1 && lineGap >= 0.5) {
-    return { label: 'brilliant', eval_loss: 0, is_only_move: false, reason: `희생수이면서 최선수, 승률 유지(drop ${wpDrop.toFixed(1)}%), 라인격차 ${lineGap.toFixed(2)}`, debug: d };
+  // ── 탁월수 판별 (WintrChess 로직) ─────────────────────
+  if (played_best && fen_before) {
+    const secondLine = top_lines[1];
+    const isBrilliant = considerBrilliant(
+      fen_before,
+      played_uci,
+      played_best,
+      wpAfter,
+      secondLine?.cp ?? null,
+      secondLine?.mate ?? null,
+      turn
+    );
+    if (isBrilliant) {
+      return { label: 'brilliant', eval_loss: 0, is_only_move: false, reason: `희생수 brilliant: 역위협 없는 unsafe piece 존재 (WintrChess 기준)`, debug: d };
+    }
   }
 
   // ── Great move (포지션 전환) ───────────────────────────
@@ -179,13 +375,18 @@ export function classifyMove(params: {
   }
 
   // ── 유일수 판별 ───────────────────────────────────────
+  // 이 수만 현재 플레이어의 승률을 50% 이상으로 유지하고,
+  // 2순위 수는 상대에게 유리해지는 경우
+  const secondLineWp = lineWinPercent(top_lines[1], turn);
   const is_only_move =
-    top_lines.length >= 2 &&
     played_best &&
-    lineGap >= only_move_margin;
+    wpAfter >= 50 &&
+    top_lines.length >= 2 &&
+    secondLineWp < 50 &&
+    lineGap >= 1;
 
   if (is_only_move) {
-    return { label: 'only_move', eval_loss: 0, is_only_move: true, reason: `유일한 좋은 수 — 2순위와 ${lineGap.toFixed(2)}폰 격차`, debug: d };
+    return { label: 'only_move', eval_loss: 0, is_only_move: true, reason: `유일하게 유리함을 유지하는 수 (2순위 승률 ${secondLineWp.toFixed(0)}% < 50%)`, debug: d };
   }
 
   // ── 최선수 vs 일반수 ─────────────────────────────────

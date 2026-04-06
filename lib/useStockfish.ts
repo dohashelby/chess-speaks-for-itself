@@ -35,6 +35,10 @@ export function useStockfish(): UseStockfishReturn {
   const linesBuffer = useRef<Map<number, SFLine>>(new Map());
   const depthRef = useRef(0);
   const currentFenRef = useRef('');
+  // SF가 실행 중일 때 stop이 전송될 때마다 stale bestmove가 1개 발생함
+  // 연속으로 수를 두면 stale bestmove가 여러 개 발생하므로 카운터로 관리
+  const skipBestmoveCountRef = useRef(0);
+  const isAnalyzingRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -88,6 +92,13 @@ export function useStockfish(): UseStockfishReturn {
       }
 
       if (data.startsWith('bestmove')) {
+        // stop 명령 응답으로 오는 stale bestmove 무시
+        if (skipBestmoveCountRef.current > 0) {
+          skipBestmoveCountRef.current--;
+          linesBuffer.current.clear();
+          return;
+        }
+
         const bestMove = data.split(' ')[1] ?? '';
         const lines = [1, 2, 3]
           .map((i) => linesBuffer.current.get(i))
@@ -106,6 +117,7 @@ export function useStockfish(): UseStockfishReturn {
           depth: depthRef.current,
           fen: currentFenRef.current,
         });
+        isAnalyzingRef.current = false;
         setIsAnalyzing(false);
         linesBuffer.current.clear();
       }
@@ -122,14 +134,23 @@ export function useStockfish(): UseStockfishReturn {
 
   const evaluate = useCallback((fen: string, depth = 20, movetime = 5000) => {
     if (!workerRef.current || !isReady) return;
+    // SF가 실행 중이면 stop이 stale bestmove를 하나 발생시킴 → 스킵 카운터 증가
+    if (isAnalyzingRef.current) {
+      skipBestmoveCountRef.current++;
+    }
+    isAnalyzingRef.current = true;
     currentFenRef.current = fen;
     linesBuffer.current.clear();
-    setResult(null); // clear stale result immediately
+    setResult(null);
     setIsAnalyzing(true);
     workerRef.current.postMessage({ type: 'evaluate', payload: { fen, depth, movetime } });
   }, [isReady]);
 
   const stop = useCallback(() => {
+    if (isAnalyzingRef.current) {
+      skipBestmoveCountRef.current++;
+    }
+    isAnalyzingRef.current = false;
     workerRef.current?.postMessage({ type: 'stop' });
     setIsAnalyzing(false);
   }, []);
