@@ -1086,7 +1086,6 @@ export default function ChessBoard({
         />
       </div>
 
-      <DebugPanel sfLogRef={rawLogRef} bookLogRef={bookLogRef} classifyLogRef={classifyLogRef} />
     </div>
   );
 }

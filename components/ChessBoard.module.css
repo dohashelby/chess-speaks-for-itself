@@ -3,13 +3,14 @@
 /* ── 레이아웃 ── */
 .root {
   display: grid;
-  grid-template-columns: minmax(0, 630px) 300px 1fr;
+  grid-template-columns: minmax(0, 580px) 300px;
   gap: 20px;
   padding: 20px;
   font-family: 'Pretendard', sans-serif;
   background: #0f0f0f;
   color: #e8e8e8;
   min-height: 100vh;
+  justify-content: center;
 }
 
 @media (max-width: 768px) {
