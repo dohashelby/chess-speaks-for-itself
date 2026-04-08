@@ -801,6 +801,7 @@ export default function ChessBoard({
       : null);
     setAiLastMoveSan(g.history().at(-1) ?? '');
     // 큐 첫 번째 FEN부터 순차 평가 시작
+    console.log('[PGN] starting eval, total fens:', fenHist.length);
     setPgnProgress({ done: 0, total: fenHist.length });
     evaluate(fenHist[0], 15, 2000);
   }, [pgnInput, evaluate]);
@@ -932,15 +933,28 @@ export default function ChessBoard({
               }}
             />
             {pgnProgress && (
-              <div className={styles.evalOverlay}>
-                <span className={styles.evalOverlayText}>Evaluating...</span>
-                <div className={styles.evalProgressTrack}>
-                  <div
-                    className={styles.evalProgressBar}
-                    style={{ width: `${Math.round((pgnProgress.done / pgnProgress.total) * 100)}%` }}
-                  />
+              <div style={{
+                position: 'absolute', inset: 0, zIndex: 9999,
+                background: 'rgba(0,0,0,0.78)',
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                gap: '16px', borderRadius: '4px',
+              }}>
+                <span style={{
+                  fontSize: '13px', letterSpacing: '0.18em',
+                  textTransform: 'uppercase', color: '#fff',
+                  fontFamily: 'monospace',
+                }}>
+                  Evaluating...
+                </span>
+                <div style={{ width: '60%', height: '4px', background: '#333', borderRadius: '2px', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%', background: '#1D9E75', borderRadius: '2px',
+                    width: `${Math.round((pgnProgress.done / pgnProgress.total) * 100)}%`,
+                    transition: 'width 0.25s ease',
+                  }} />
                 </div>
-                <span className={styles.evalProgressCount}>
+                <span style={{ fontSize: '11px', color: '#ccc', fontFamily: 'monospace' }}>
                   {pgnProgress.done} / {pgnProgress.total}
                 </span>
               </div>
