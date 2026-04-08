@@ -12,11 +12,11 @@ export default function AnalyzePage() {
         borderBottom: '0.5px solid #2a2a2a',
       }}>
         <span style={{
-          fontFamily: "'IBM Plex Mono', monospace",
+          fontFamily: "'Pretendard', sans-serif",
           fontWeight: 800,
           fontSize: '22px',
           color: '#e8e8e8',
-          letterSpacing: '0.06em',
+          letterSpacing: '0.02em',
         }}>
           Chess Speaks For Itself
         </span>
