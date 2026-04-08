@@ -471,6 +471,7 @@ export default function ChessBoard({
   const [openingName, setOpeningName] = useState<string | null>(null);
   const [displayEval, setDisplayEval] = useState<{ eval: number; mate: number | null }>({ eval: 0, mate: null });
   const [preSfResult, setPreSfResult] = useState<SFResult | null>(null);
+  const [pgnProgress, setPgnProgress] = useState<{ done: number; total: number } | null>(null);
 
   // Stockfish 준비되면 현재 포지션 즉시 분석 (첫 수 전 baseline 확보)
   useEffect(() => {
@@ -573,9 +574,11 @@ export default function ChessBoard({
     // 다음 FEN 평가
     queue.nextIdx++;
     if (queue.nextIdx < queue.fens.length) {
+      setPgnProgress({ done: queue.nextIdx, total: queue.fens.length });
       evaluate(queue.fens[queue.nextIdx], 15, 2000); // 배치 분석: 포지션당 최대 2초
     } else {
       pgnQueueRef.current = null;
+      setPgnProgress(null);
     }
   }, [sfResult, isBookMove, evaluate]);
 
@@ -798,6 +801,7 @@ export default function ChessBoard({
       : null);
     setAiLastMoveSan(g.history().at(-1) ?? '');
     // 큐 첫 번째 FEN부터 순차 평가 시작
+    setPgnProgress({ done: 0, total: fenHist.length });
     evaluate(fenHist[0], 15, 2000);
   }, [pgnInput, evaluate]);
 
@@ -863,6 +867,7 @@ export default function ChessBoard({
     setPgnError('');
     // setAiLastMoveSan('');
     setOpeningName(null);
+    setPgnProgress(null);
     setDisplayEval({ eval: 0, mate: null });
     stop();
     evaluate(new Chess().fen()); // 초기 포지션 재분석 (sfResult stale 방지)
@@ -926,6 +931,20 @@ export default function ChessBoard({
                 },
               }}
             />
+            {pgnProgress && (
+              <div className={styles.evalOverlay}>
+                <span className={styles.evalOverlayText}>Evaluating...</span>
+                <div className={styles.evalProgressTrack}>
+                  <div
+                    className={styles.evalProgressBar}
+                    style={{ width: `${Math.round((pgnProgress.done / pgnProgress.total) * 100)}%` }}
+                  />
+                </div>
+                <span className={styles.evalProgressCount}>
+                  {pgnProgress.done} / {pgnProgress.total}
+                </span>
+              </div>
+            )}
           </div>
         </div>
         <div className={styles.statusBar}>
