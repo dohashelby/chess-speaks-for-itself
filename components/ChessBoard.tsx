@@ -471,7 +471,7 @@ export default function ChessBoard({
   const [openingName, setOpeningName] = useState<string | null>(null);
   const [displayEval, setDisplayEval] = useState<{ eval: number; mate: number | null }>({ eval: 0, mate: null });
   const [preSfResult, setPreSfResult] = useState<SFResult | null>(null);
-  const [pgnProgress, setPgnProgress] = useState<{ done: number; total: number } | null>(null);
+  const [pgnProgress, setPgnProgress] = useState<{ done: number; total: number; evals: number[] } | null>(null);
 
   // Stockfish 준비되면 현재 포지션 즉시 분석 (첫 수 전 baseline 확보)
   useEffect(() => {
@@ -572,9 +572,10 @@ export default function ChessBoard({
     }
 
     // 다음 FEN 평가
+    const evalForGraph = sfResult.eval;
     queue.nextIdx++;
     if (queue.nextIdx < queue.fens.length) {
-      setPgnProgress({ done: queue.nextIdx, total: queue.fens.length });
+      setPgnProgress(prev => prev ? { done: queue.nextIdx, total: queue.fens.length, evals: [...prev.evals, evalForGraph] } : null);
       evaluate(queue.fens[queue.nextIdx], 15, 2000); // 배치 분석: 포지션당 최대 2초
     } else {
       pgnQueueRef.current = null;
@@ -803,7 +804,7 @@ export default function ChessBoard({
     setAiLastMoveSan(g.history().at(-1) ?? '');
     // 큐 첫 번째 FEN부터 순차 평가 시작
     console.log('[PGN] starting eval, total fens:', fenHist.length);
-    setPgnProgress({ done: 0, total: fenHist.length });
+    setPgnProgress({ done: 0, total: fenHist.length, evals: [] });
     evaluate(fenHist[0], 15, 2000);
   }, [pgnInput, evaluate]);
 
@@ -933,33 +934,53 @@ export default function ChessBoard({
                 },
               }}
             />
-            {pgnProgress && (
-              <div style={{
-                position: 'absolute', inset: 0, zIndex: 9999,
-                background: 'rgba(0,0,0,0.78)',
-                display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center',
-                gap: '16px', borderRadius: '4px',
-              }}>
-                <span style={{
-                  fontSize: '13px', letterSpacing: '0.18em',
-                  textTransform: 'uppercase', color: '#fff',
-                  fontFamily: 'monospace',
+            {pgnProgress && (() => {
+              const W = 400, H = 80, mid = H / 2;
+              const clamp = (v: number) => Math.max(-5, Math.min(5, v));
+              const barW = W / Math.max(pgnProgress.total, 1);
+              return (
+                <div style={{
+                  position: 'absolute', inset: 0, zIndex: 9999,
+                  background: 'rgba(0,0,0,0.82)',
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  gap: '14px', borderRadius: '4px',
                 }}>
-                  Evaluating...
-                </span>
-                <div style={{ width: '60%', height: '4px', background: '#333', borderRadius: '2px', overflow: 'hidden' }}>
-                  <div style={{
-                    height: '100%', background: '#1D9E75', borderRadius: '2px',
-                    width: `${Math.round((pgnProgress.done / pgnProgress.total) * 100)}%`,
-                    transition: 'width 0.25s ease',
-                  }} />
+                  <span style={{ fontSize: '12px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#aaa' }}>
+                    Evaluating...
+                  </span>
+                  <svg
+                    viewBox={`0 0 ${W} ${H}`}
+                    style={{ width: '75%', height: '80px' }}
+                    preserveAspectRatio="none"
+                  >
+                    <rect x={0} y={0} width={W} height={H} fill="#0f0f0f" rx={2} />
+                    <line x1={0} y1={mid} x2={W} y2={mid} stroke="#2a2a2a" strokeWidth={1} />
+                    {/* 미평가 구간 */}
+                    <rect x={pgnProgress.evals.length * barW} y={mid - 0.5} width={(pgnProgress.total - pgnProgress.evals.length) * barW} height={1} fill="#222" />
+                    {/* 평가된 바 */}
+                    {pgnProgress.evals.map((ev, i) => {
+                      const c = clamp(ev);
+                      const isWhite = c >= 0;
+                      const bh = Math.max((Math.abs(c) / 5) * mid, 1.5);
+                      return (
+                        <rect
+                          key={i}
+                          x={i * barW + 0.5}
+                          y={isWhite ? mid - bh : mid}
+                          width={Math.max(barW - 1, 1)}
+                          height={bh}
+                          fill={isWhite ? '#d4d4d4' : '#444'}
+                        />
+                      );
+                    })}
+                  </svg>
+                  <span style={{ fontSize: '10px', color: '#555', letterSpacing: '0.08em' }}>
+                    {pgnProgress.done} / {pgnProgress.total}
+                  </span>
                 </div>
-                <span style={{ fontSize: '11px', color: '#ccc', fontFamily: 'monospace' }}>
-                  {pgnProgress.done} / {pgnProgress.total}
-                </span>
-              </div>
-            )}
+              );
+            })()}
           </div>
         </div>
         <div className={styles.statusBar}>
