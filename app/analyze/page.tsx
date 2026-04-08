@@ -8,26 +8,27 @@ export default function AnalyzePage() {
   return (
     <main style={{ minHeight: '100vh', background: '#0f0f0f' }}>
       <header style={{
-        padding: '12px 20px',
+        padding: '18px 28px',
         borderBottom: '0.5px solid #2a2a2a',
         display: 'flex',
         alignItems: 'baseline',
-        gap: '10px',
+        gap: '14px',
       }}>
         <span style={{
           fontFamily: "'IBM Plex Mono', monospace",
-          fontWeight: 700,
-          fontSize: '15px',
+          fontWeight: 800,
+          fontSize: '22px',
           color: '#e8e8e8',
-          letterSpacing: '0.04em',
+          letterSpacing: '0.06em',
         }}>
           CSFI :
         </span>
         <span style={{
           fontFamily: "'IBM Plex Mono', monospace",
-          fontSize: '11px',
-          color: '#555',
-          letterSpacing: '0.08em',
+          fontSize: '13px',
+          color: '#888',
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
         }}>
           Chess Speaks For Itself
         </span>
