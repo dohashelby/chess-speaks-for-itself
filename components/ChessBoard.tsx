@@ -935,47 +935,61 @@ export default function ChessBoard({
               }}
             />
             {pgnProgress && (() => {
-              const W = 400, H = 80, mid = H / 2;
-              const clamp = (v: number) => Math.max(-5, Math.min(5, v));
-              const barW = W / Math.max(pgnProgress.total, 1);
+              const W = 500, H = 100, mid = H / 2;
+              const { evals, total } = pgnProgress;
+              const clamp = (v: number) => Math.max(-6, Math.min(6, v));
+              const pts: [number, number][] = evals.map((ev, i) => [
+                (i / Math.max(total - 1, 1)) * W,
+                mid - (clamp(ev) / 6) * mid,
+              ]);
+
+              // smooth cubic bezier (control points at horizontal midpoint)
+              let fill = '', stroke = '';
+              if (pts.length === 1) {
+                fill = `M ${pts[0][0]} ${H} L ${pts[0][0]} ${pts[0][1]} L ${pts[0][0]} ${H} Z`;
+              } else if (pts.length >= 2) {
+                const seg = pts.map(([x, y], i) => {
+                  if (i === 0) return `M ${x} ${y}`;
+                  const [px, py] = pts[i - 1];
+                  const cx = (px + x) / 2;
+                  return `C ${cx} ${py} ${cx} ${y} ${x} ${y}`;
+                }).join(' ');
+                fill = `M ${pts[0][0]} ${H} L ${pts[0][0]} ${pts[0][1]} ${seg.slice(seg.indexOf('C'))} L ${pts[pts.length-1][0]} ${H} Z`;
+                stroke = seg;
+              }
+
+              const lastX = pts.length > 0 ? pts[pts.length - 1][0] : 0;
+
               return (
                 <div style={{
                   position: 'absolute', inset: 0, zIndex: 9999,
-                  background: 'rgba(0,0,0,0.82)',
+                  background: 'rgba(10,10,10,0.88)',
                   display: 'flex', flexDirection: 'column',
                   alignItems: 'center', justifyContent: 'center',
-                  gap: '14px', borderRadius: '4px',
+                  gap: '16px', borderRadius: '4px',
                 }}>
-                  <span style={{ fontSize: '12px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#aaa' }}>
-                    Evaluating...
+                  <span style={{ fontSize: '11px', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#555' }}>
+                    Evaluating
                   </span>
-                  <svg
-                    viewBox={`0 0 ${W} ${H}`}
-                    style={{ width: '75%', height: '80px' }}
-                    preserveAspectRatio="none"
-                  >
-                    <rect x={0} y={0} width={W} height={H} fill="#0f0f0f" rx={2} />
-                    <line x1={0} y1={mid} x2={W} y2={mid} stroke="#2a2a2a" strokeWidth={1} />
-                    {/* 미평가 구간 */}
-                    <rect x={pgnProgress.evals.length * barW} y={mid - 0.5} width={(pgnProgress.total - pgnProgress.evals.length) * barW} height={1} fill="#222" />
-                    {/* 평가된 바 */}
-                    {pgnProgress.evals.map((ev, i) => {
-                      const c = clamp(ev);
-                      const isWhite = c >= 0;
-                      const bh = Math.max((Math.abs(c) / 5) * mid, 1.5);
-                      return (
-                        <rect
-                          key={i}
-                          x={i * barW + 0.5}
-                          y={isWhite ? mid - bh : mid}
-                          width={Math.max(barW - 1, 1)}
-                          height={bh}
-                          fill={isWhite ? '#d4d4d4' : '#444'}
-                        />
-                      );
-                    })}
+                  <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '78%', height: '90px' }} preserveAspectRatio="none">
+                    {/* 배경 */}
+                    <rect x={0} y={0} width={W} height={H} fill="#1a1a1a" rx={6} />
+                    {/* 미평가 구간 - flat center */}
+                    {evals.length < total && (
+                      <line x1={lastX} y1={mid} x2={W} y2={mid} stroke="#2a2a2a" strokeWidth={1.5} strokeDasharray="3 3" />
+                    )}
+                    {/* 흰 fill (백 유리 = 위, 흑 유리 = 아래) */}
+                    {fill && <path d={fill} fill="rgba(255,255,255,0.92)" />}
+                    {/* 중심선 */}
+                    <line x1={0} y1={mid} x2={lastX || W} y2={mid} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
+                    {/* 커브 stroke */}
+                    {stroke && <path d={stroke} fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth={1.5} />}
+                    {/* 현재 평가 중인 위치 표시 */}
+                    {pts.length > 0 && (
+                      <circle cx={pts[pts.length-1][0]} cy={pts[pts.length-1][1]} r={3} fill="#1D9E75" />
+                    )}
                   </svg>
-                  <span style={{ fontSize: '10px', color: '#555', letterSpacing: '0.08em' }}>
+                  <span style={{ fontSize: '10px', color: '#444', letterSpacing: '0.1em' }}>
                     {pgnProgress.done} / {pgnProgress.total}
                   </span>
                 </div>
