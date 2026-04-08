@@ -747,9 +747,10 @@ export default function ChessBoard({
 
   // PGN 로드
   const loadPgn = useCallback(() => {
+    console.log('[PGN] loadPgn called');
     const g = new Chess();
     try { g.loadPgn(pgnInput.trim()); }
-    catch { setPgnError('PGN 형식이 올바르지 않습니다'); return; }
+    catch (err) { console.log('[PGN] parse error', err); setPgnError('PGN 형식이 올바르지 않습니다'); return; }
     setPgnError('');
     gameRef.current = g;
     const history = g.history({ verbose: true });
