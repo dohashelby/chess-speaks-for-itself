@@ -1,13 +1,53 @@
 import Link from 'next/link';
+import { Noto_Serif_KR } from 'next/font/google';
+
+const notoSerifKr = Noto_Serif_KR({ subsets: ['latin'], weight: ['400', '700'] });
 
 export default function Home() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white">
-      <h1 className="text-4xl font-bold mb-4">Chess Explainer</h1>
-      <p className="text-gray-400 mb-8">AI가 체스 수를 실시간으로 해설해드립니다</p>
+    <main style={{
+      minHeight: '100vh',
+      background: '#0f0f0f',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '0',
+      fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
+    }}>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        marginBottom: '56px',
+      }}>
+        {['CHESS', 'SPEAKS', 'FOR', 'ITSELF'].map((word) => (
+          <span key={word} style={{
+            fontSize: 'clamp(52px, 12vw, 112px)',
+            fontWeight: 800,
+            color: '#e8e8e8',
+            lineHeight: 1.0,
+            letterSpacing: '-0.03em',
+            display: 'block',
+          }}>
+            {word}
+          </span>
+        ))}
+      </div>
+
       <Link
         href="/analyze"
-        className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-lg font-medium transition-colors"
+        style={{
+          padding: '14px 36px',
+          background: '#e8e8e8',
+          color: '#0f0f0f',
+          borderRadius: '4px',
+          fontSize: '16px',
+          fontWeight: 700,
+          letterSpacing: '0.06em',
+          textDecoration: 'none',
+          fontFamily: notoSerifKr.style.fontFamily,
+        }}
       >
         분석 시작하기
       </Link>

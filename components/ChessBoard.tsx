@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Chess, Square } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import { useStockfish, SFResult, SFLine } from '@/lib/useStockfish';
@@ -184,51 +184,98 @@ function MoveList({
   history,
   labels,
   currentIdx,
-  onJump,
+  variation,
+  isInVariation,
+  varFenIdx,
+  onJumpMain,
+  onJumpVariation,
 }: {
   history: string[];
   labels: (MoveLabel | null)[];
   currentIdx: number;
-  onJump: (idx: number) => void;
+  variation: VariationState | null;
+  isInVariation: boolean;
+  varFenIdx: number;
+  onJumpMain: (idx: number) => void;
+  onJumpVariation: (varIdx: number) => void;
 }) {
-  const rows: { n: number; w: string; b: string | null; wl: MoveLabel | null; bl: MoveLabel | null }[] = [];
+  const rows: { n: number; w: string; b: string | null; wl: MoveLabel | null; bl: MoveLabel | null; wIdx: number; bIdx: number }[] = [];
   for (let i = 0; i < history.length; i += 2) {
-    rows.push({ n: i / 2 + 1, w: history[i], b: history[i + 1] ?? null, wl: labels[i] ?? null, bl: labels[i + 1] ?? null });
+    rows.push({ n: i / 2 + 1, w: history[i], b: history[i + 1] ?? null, wl: labels[i] ?? null, bl: labels[i + 1] ?? null, wIdx: i, bIdx: i + 1 });
   }
+
+  // variation이 삽입될 row 번호 (1-based). startFenIdx=0이면 0(맨 앞)
+  const varAfterRow = variation
+    ? (variation.startFenIdx > 0 ? Math.floor((variation.startFenIdx - 1) / 2) + 1 : 0)
+    : -1;
+
+  const activeVarIdx = isInVariation ? varFenIdx - 1 : -2; // 0-based in variation.sans
+
+  const renderVariation = () => {
+    if (!variation) return null;
+    const tokens: { type: 'num' | 'move'; text: string; idx: number }[] = [];
+    for (let i = 0; i < variation.sans.length; i++) {
+      const fenPos = variation.startFenIdx + i;
+      const fullMove = Math.floor(fenPos / 2) + 1;
+      if (fenPos % 2 === 0) {
+        tokens.push({ type: 'num', text: `${fullMove}.`, idx: i });
+      } else if (i === 0) {
+        tokens.push({ type: 'num', text: `${fullMove}...`, idx: i });
+      }
+      tokens.push({ type: 'move', text: variation.sans[i], idx: i });
+    }
+    return (
+      <div className={styles.variationRow}>
+        <span className={styles.varEllipsis}>…</span>
+        {tokens.map((tok, i) =>
+          tok.type === 'num'
+            ? <span key={i} className={styles.varNum}>{tok.text}</span>
+            : <button
+                key={i}
+                className={`${styles.varMove} ${tok.idx === activeVarIdx ? styles.varMoveActive : ''}`}
+                onClick={() => onJumpVariation(tok.idx)}
+              >{tok.text}</button>
+        )}
+      </div>
+    );
+  };
+
+  const activeMainIdx = isInVariation ? -2 : currentIdx;
 
   return (
     <div className={styles.moveTable}>
       {rows.length === 0 && <span className={styles.movePlaceholder}>수순 없음</span>}
-      {rows.map(({ n, w, b, wl, bl }) => (
-        <div key={n} className={styles.moveRow}>
-          <span className={styles.moveNum}>{n}</span>
-          <button
-            className={`${styles.moveCell} ${currentIdx === (n - 1) * 2 ? styles.moveActive : ''}`}
-            onClick={() => onJump((n - 1) * 2)}
-          >
-            <span className={styles.moveSan}>{w}</span>
-            {wl && LABEL_META[wl].symbol && (
-              <span className={styles.moveSymbol} style={{ color: LABEL_META[wl].color }}>
-                {LABEL_META[wl].symbol}
-              </span>
-            )}
-          </button>
-          <button
-            className={`${styles.moveCell} ${b && currentIdx === (n - 1) * 2 + 1 ? styles.moveActive : ''} ${!b ? styles.moveCellEmpty : ''}`}
-            onClick={() => b && onJump((n - 1) * 2 + 1)}
-            disabled={!b}
-          >
-            {b && <>
-              <span className={styles.moveSan}>{b}</span>
-              {bl && LABEL_META[bl].symbol && (
-                <span className={styles.moveSymbol} style={{ color: LABEL_META[bl].color }}>
-                  {LABEL_META[bl].symbol}
-                </span>
+      {varAfterRow === 0 && renderVariation()}
+      {rows.map(({ n, w, b, wl, bl, wIdx, bIdx }) => (
+        <React.Fragment key={n}>
+          <div className={styles.moveRow}>
+            <span className={styles.moveNum}>{n}</span>
+            <button
+              className={`${styles.moveCell} ${activeMainIdx === wIdx ? styles.moveActive : ''}`}
+              onClick={() => onJumpMain(wIdx)}
+            >
+              <span className={styles.moveSan}>{w}</span>
+              {wl && LABEL_META[wl].symbol && (
+                <span className={styles.moveSymbol} style={{ color: LABEL_META[wl].color }}>{LABEL_META[wl].symbol}</span>
               )}
-            </>}
-          </button>
-        </div>
+            </button>
+            <button
+              className={`${styles.moveCell} ${b && activeMainIdx === bIdx ? styles.moveActive : ''} ${!b ? styles.moveCellEmpty : ''}`}
+              onClick={() => b && onJumpMain(bIdx)}
+              disabled={!b}
+            >
+              {b && <>
+                <span className={styles.moveSan}>{b}</span>
+                {bl && LABEL_META[bl].symbol && (
+                  <span className={styles.moveSymbol} style={{ color: LABEL_META[bl].color }}>{LABEL_META[bl].symbol}</span>
+                )}
+              </>}
+            </button>
+          </div>
+          {varAfterRow === n && renderVariation()}
+        </React.Fragment>
       ))}
+      {variation && varAfterRow > rows.length && renderVariation()}
     </div>
   );
 }
@@ -346,6 +393,13 @@ export interface ChessBoardProps {
   flipped?: boolean;
 }
 
+interface VariationState {
+  startFenIdx: number;                          // FEN index (main line) where variation branches
+  sans: string[];                               // variation SAN moves
+  fens: string[];                               // fens[0]=branch point, fens[k]=after k moves
+  moves: { from: Square; to: Square }[];        // for lastMove highlight
+}
+
 interface PgnMoveInfo {
   uci: string;
   turn: 'w' | 'b';
@@ -394,10 +448,15 @@ export default function ChessBoard({
   const [legalDests, setLegalDests] = useState<Square[]>([]);
   const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(null);
   const [fenHistory, setFenHistory] = useState<string[]>([gameRef.current.fen()]);
+  const [moveFromToHistory, setMoveFromToHistory] = useState<({ from: Square; to: Square } | null)[]>([]);
   const [sanHistory, setSanHistory] = useState<string[]>([]);
   const [moveLabels, setMoveLabels] = useState<(MoveLabel | null)[]>([]);
   const [currentLabel, setCurrentLabel] = useState<MoveLabel | null>(null);
   const [currentIdx, setCurrentIdx] = useState(0);
+  const [mainLineLength, setMainLineLength] = useState(0);
+  const [variation, setVariation] = useState<VariationState | null>(null);
+  const [isInVariation, setIsInVariation] = useState(false);
+  const [varFenIdx, setVarFenIdx] = useState(0); // index in variation.fens (1 = after first move)
   const [pgnInput, setPgnInput] = useState(initialPgn ?? '');
   const [pgnError, setPgnError] = useState('');
   const [currentLevel, setCurrentLevel] = useState<'beginner' | 'intermediate'>(level);
@@ -565,6 +624,37 @@ export default function ChessBoard({
 
     pgnQueueRef.current = null; // 수동 플레이 시 배치 분류 중단
     const newFen = g.fen();
+    // ── PGN 로드 상태: variation으로 처리 (메인 라인 보존) ──
+    if (mainLineLength > 0) {
+      const varStart = isInVariation ? variation!.startFenIdx : currentIdx;
+      const prevSans  = isInVariation ? variation!.sans.slice(0, varFenIdx)      : [];
+      const prevFens  = isInVariation ? variation!.fens.slice(0, varFenIdx + 1)  : [fenHistory[currentIdx]];
+      const prevMoves = isInVariation ? variation!.moves.slice(0, varFenIdx)     : [];
+
+      const newVar: VariationState = {
+        startFenIdx: varStart,
+        sans:  [...prevSans,  move.san],
+        fens:  [...prevFens,  newFen],
+        moves: [...prevMoves, { from, to }],
+      };
+      const newVarIdx = newVar.fens.length - 1;
+
+      pendingRef.current = null;
+      setVariation(newVar);
+      setIsInVariation(true);
+      setVarFenIdx(newVarIdx);
+      setFen(newFen);
+      setLastMove({ from, to });
+      setSelected(null);
+      setLegalDests([]);
+      setCurrentLabel(null);
+      setPreSfResult(sfForPos);
+      setAiLastMoveSan(move.san);
+      evaluate(newFen);
+      return true;
+    }
+
+    // ── 일반 플레이 (PGN 없음): 메인 라인에 수 추가 ──
     const newFenHist = fenHistory.slice(0, currentIdx + 1).concat(newFen);
     const newSanHist = sanHistory.slice(0, currentIdx).concat(move.san);
     const moveIdx = newSanHist.length - 1;
@@ -584,6 +674,7 @@ export default function ChessBoard({
 
     setFenHistory(newFenHist);
     setSanHistory(newSanHist);
+    setMoveFromToHistory(prev => [...prev.slice(0, moveIdx), { from, to }]);
     setMoveLabels(prev => [...prev.slice(0, moveIdx), null]);
     setCurrentLabel(null);
     setPreSfResult(sfForPos);
@@ -595,7 +686,7 @@ export default function ChessBoard({
     setAiLastMoveSan(move.san);
     evaluate(newFen);
     return true;
-  }, [sfResult, fenHistory, currentIdx, sanHistory, evaluate]);
+  }, [sfResult, fenHistory, currentIdx, sanHistory, mainLineLength, isInVariation, variation, varFenIdx, evaluate]);
 
   // 클릭 핸들러
   const handleSquareClick = useCallback((sq: Square) => {
@@ -688,7 +779,12 @@ export default function ChessBoard({
     };
 
     setFenHistory(fenHist);
+    setMoveFromToHistory(history.map(m => ({ from: m.from as Square, to: m.to as Square })));
     setSanHistory(g.history());
+    setMainLineLength(history.length);
+    setVariation(null);
+    setIsInVariation(false);
+    setVarFenIdx(0);
     setMoveLabels(new Array(history.length).fill(null));
     setCurrentLabel(null);
     setOpeningName(null);
@@ -705,23 +801,42 @@ export default function ChessBoard({
     evaluate(fenHist[0], 15, 2000);
   }, [pgnInput, evaluate]);
 
-  // 수순 이동
+  // 수순 이동 (메인 라인)
   const jumpTo = useCallback((idx: number) => {
     const f = fenHistory[idx];
     if (!f) return;
-    pgnQueueRef.current = null; // 탐색 시작 시 배치 분류 중단
+    pgnQueueRef.current = null;
     gameRef.current = new Chess(f);
     setCurrentIdx(idx);
     setFen(f);
     setSelected(null);
     setLegalDests([]);
     setCurrentLabel(moveLabels[idx - 1] ?? null);
+    setLastMove(idx > 0 ? (moveFromToHistory[idx - 1] ?? null) : null);
+    setIsInVariation(false);
     setPreSfResult(null);
     setAiLastMoveSan(sanHistory[idx - 1] ?? '');
-    // debounce: 연속 클릭 시 마지막 포지션만 분석
     if (evalDebounceRef.current) clearTimeout(evalDebounceRef.current);
     evalDebounceRef.current = setTimeout(() => { evaluate(f, 15); }, 300);
-  }, [fenHistory, moveLabels, sanHistory, evaluate]);
+  }, [fenHistory, moveFromToHistory, moveLabels, sanHistory, evaluate]);
+
+  // 수순 이동 (variation)
+  const jumpToVariation = useCallback((varIdx: number) => {
+    if (!variation) return;
+    const f = variation.fens[varIdx + 1];
+    if (!f) return;
+    gameRef.current = new Chess(f);
+    setIsInVariation(true);
+    setVarFenIdx(varIdx + 1);
+    setFen(f);
+    setLastMove(variation.moves[varIdx] ?? null);
+    setSelected(null);
+    setLegalDests([]);
+    setCurrentLabel(null);
+    setPreSfResult(null);
+    if (evalDebounceRef.current) clearTimeout(evalDebounceRef.current);
+    evalDebounceRef.current = setTimeout(() => { evaluate(f, 15); }, 300);
+  }, [variation, evaluate]);
 
   // 리셋
   const reset = useCallback(() => {
@@ -734,7 +849,12 @@ export default function ChessBoard({
     setLegalDests([]);
     setLastMove(null);
     setFenHistory([g.fen()]);
+    setMoveFromToHistory([]);
     setSanHistory([]);
+    setMainLineLength(0);
+    setVariation(null);
+    setIsInVariation(false);
+    setVarFenIdx(0);
     setMoveLabels([]);
     setCurrentLabel(null);
     setPreSfResult(null);
@@ -767,13 +887,19 @@ export default function ChessBoard({
               const el = (e.target as HTMLElement).closest('[data-square]');
               if (el) handleSquareClick(el.getAttribute('data-square') as Square);
             }}
+            onTouchEnd={(e) => {
+              const el = (e.target as HTMLElement).closest('[data-square]');
+              if (el) {
+                e.preventDefault();
+                handleSquareClick(el.getAttribute('data-square') as Square);
+              }
+            }}
           >
             <Chessboard
               options={{
                 position: fen,
                 onPieceDrop: handlePieceDrop,
                 onPieceDrag: handlePieceDrag,
-                squareStyles,
                 boardOrientation: flipped ? 'black' : 'white',
                 allowDrawingArrows: false,
                 boardStyle: {
@@ -784,6 +910,20 @@ export default function ChessBoard({
                 },
                 lightSquareStyle: { backgroundColor: '#f0d9b5' },
                 darkSquareStyle: { backgroundColor: '#b58863' },
+                squareRenderer: ({ square, children }: { square: string; children?: React.ReactNode }) => {
+                  const meta = (square === lastMove?.to && currentLabel) ? LABEL_META[currentLabel] : null;
+                  const showBadge = meta && meta.symbol && meta.symbol !== '📖';
+                  return (
+                    <div style={{ position: 'relative', width: '100%', height: '100%', ...squareStyles[square] }}>
+                      {children}
+                      {showBadge && (
+                        <div className={styles.moveLabelBadge} style={{ background: meta.color }}>
+                          {meta.symbol}
+                        </div>
+                      )}
+                    </div>
+                  );
+                },
               }}
             />
           </div>
@@ -859,7 +999,11 @@ export default function ChessBoard({
             history={sanHistory}
             labels={moveLabels}
             currentIdx={currentIdx - 1}
-            onJump={(idx) => jumpTo(idx + 1)}
+            variation={variation}
+            isInVariation={isInVariation}
+            varFenIdx={varFenIdx}
+            onJumpMain={(idx) => jumpTo(idx + 1)}
+            onJumpVariation={jumpToVariation}
           />
         </div>
 
