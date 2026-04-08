@@ -1,7 +1,4 @@
 import Link from 'next/link';
-import { Noto_Serif_KR } from 'next/font/google';
-
-const notoSerifKr = Noto_Serif_KR({ subsets: ['latin'], weight: ['400', '700'] });
 
 export default function Home() {
   return (
@@ -13,7 +10,7 @@ export default function Home() {
       alignItems: 'center',
       justifyContent: 'center',
       gap: '0',
-      fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
+      fontFamily: "'Pretendard', sans-serif",
     }}>
       <div style={{
         display: 'flex',
@@ -46,7 +43,7 @@ export default function Home() {
           fontWeight: 700,
           letterSpacing: '0.06em',
           textDecoration: 'none',
-          fontFamily: notoSerifKr.style.fontFamily,
+          fontFamily: "'Pretendard', sans-serif",
         }}
       >
         분석 시작하기

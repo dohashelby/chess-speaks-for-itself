@@ -6,7 +6,7 @@
   grid-template-columns: minmax(0, 630px) 300px 1fr;
   gap: 20px;
   padding: 20px;
-  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+  font-family: 'Pretendard', sans-serif;
   background: #0f0f0f;
   color: #e8e8e8;
   min-height: 100vh;
@@ -72,7 +72,7 @@
 .debugLine {
   padding: 1px 12px;
   font-size: 10px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
   color: #555;
   white-space: nowrap;
   line-height: 1.6;
@@ -106,7 +106,7 @@
   padding: 4px 8px;
   font-size: 9px;
   letter-spacing: 0.1em;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
   background: transparent;
   border: none;
   color: #444;
@@ -127,7 +127,7 @@
 .debugBookEntry {
   padding: 8px 12px;
   border-bottom: 0.5px solid #1a1a1a;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
 }
 
 .debugBookEntry:hover {
@@ -295,7 +295,7 @@
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: #ffffff;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
   animation: evalBlink 1s infinite;
 }
 
@@ -322,7 +322,7 @@
 .evalProgressCount {
   font-size: 11px;
   color: #ccc;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
 }
 
 /* ── 보드 컬럼 ── */
@@ -451,7 +451,7 @@
 .evalLabel {
   font-size: 10px;
   color: #888;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
   letter-spacing: 0.02em;
 }
 
@@ -461,7 +461,7 @@
   margin-top: 8px;
   font-size: 11px;
   color: #666;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
   padding-left: 22px;
   display: flex;
   align-items: center;
@@ -478,7 +478,7 @@
   border: 0.5px solid;
   font-size: 11px;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
   letter-spacing: 0.04em;
   animation: fadeIn 0.2s ease;
 }
@@ -572,13 +572,13 @@
   font-weight: 500;
   min-width: 36px;
   color: #1D9E75;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
 }
 
 .lineMoves {
   font-size: 10px;
   color: #555;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -592,7 +592,7 @@
   border-radius: 5px;
   padding: 8px;
   font-size: 11px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
   color: #e8e8e8;
   resize: vertical;
   outline: none;
@@ -618,7 +618,7 @@
 .btn {
   padding: 6px 14px;
   font-size: 11px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
   border: 0.5px solid #333;
   border-radius: 5px;
   background: transparent;
@@ -658,7 +658,7 @@
   flex: 1;
   padding: 7px;
   font-size: 11px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
   background: transparent;
   border: none;
   color: #555;
@@ -703,7 +703,7 @@
   color: #444;
   text-align: right;
   padding-right: 4px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
   user-select: none;
 }
 
@@ -734,14 +734,14 @@
 
 .moveSan {
   font-size: 12px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
   color: #aaa;
 }
 
 .moveSymbol {
   font-size: 10px;
   font-weight: 700;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
 }
 
 .moveActive .moveSan {
@@ -827,7 +827,7 @@
   margin-left: auto;
   padding: 4px 10px;
   font-size: 10px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
   border: 0.5px solid #1D9E75;
   border-radius: 4px;
   background: transparent;
@@ -875,19 +875,19 @@
   font-size: 9px;
   color: #444;
   margin-left: auto;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Pretendard', sans-serif;
 }
 
 .aiText {
   font-size: 13px;
   line-height: 1.8;
   color: #c8c8c8;
-  font-family: 'Crimson Pro', Georgia, serif;
+  font-family: 'Pretendard', sans-serif;
   white-space: pre-wrap;
 }
 
 .aiPlaceholder {
   color: #444;
   font-style: italic;
-  font-family: 'Crimson Pro', Georgia, serif;
+  font-family: 'Pretendard', sans-serif;
 }
