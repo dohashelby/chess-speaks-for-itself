@@ -573,6 +573,7 @@ export default function ChessBoard({
   const [openingName, setOpeningName] = useState<string | null>(null);
   const [displayEval, setDisplayEval] = useState<{ eval: number; mate: number | null }>({ eval: 0, mate: null });
   const [preSfResult, setPreSfResult] = useState<SFResult | null>(null);
+  const lastSfResultRef = useRef<SFResult | null>(null);
   const [pgnProgress, setPgnProgress] = useState<{ done: number; total: number; evals: number[] } | null>(null);
 
   // Stockfish 준비되면 현재 포지션 즉시 분석 (첫 수 전 baseline 확보)
@@ -586,6 +587,11 @@ export default function ChessBoard({
   useEffect(() => {
     getOpeningName(fen).then(name => { if (name) setOpeningName(name); });
   }, [fen, getOpeningName]);
+
+  // sfResult가 오면 항상 ref에 보존 (null로 바뀌어도 카드 유지용)
+  useEffect(() => {
+    if (sfResult) lastSfResultRef.current = sfResult;
+  }, [sfResult]);
 
   // sfResult가 현재 FEN과 일치할 때만 eval 업데이트 — 분석 중 이전 값 유지
   // 체크메이트는 Stockfish 결과 없이 chess.js로 직접 감지
@@ -1032,11 +1038,22 @@ export default function ChessBoard({
                 squareRenderer: ({ square, children }: { square: string; children?: React.ReactNode }) => {
                   const meta = (square === lastMove?.to && currentLabel) ? LABEL_META[currentLabel] : null;
                   const showBadge = meta && meta.symbol && meta.symbol !== '📖';
+                  const isRightEdge = (!flipped && square[0] === 'h') || (flipped && square[0] === 'a');
                   return (
                     <div style={{ position: 'relative', width: '100%', height: '100%', ...squareStyles[square] }}>
                       {children}
                       {showBadge && (
-                        <div className={styles.moveLabelBadge} style={{ background: meta.color }}>
+                        <div
+                          className={styles.moveLabelBadge}
+                          style={{
+                            background: meta.color,
+                            ...(isRightEdge && {
+                              right: 'auto',
+                              left: 0,
+                              transform: 'translate(-30%, -30%)',
+                            }),
+                          }}
+                        >
                           {meta.symbol}
                         </div>
                       )}
@@ -1079,28 +1096,35 @@ export default function ChessBoard({
       </div>
 
       <div className={styles.panel}>
-        {sfResult && sfResult.fen === fen && (
-          <div className={styles.card}>
-            <div className={styles.cardLabel}>Stockfish 추천</div>
-            <div className={styles.bestMove}>
-              {uciToSan(fen, sfResult.bestMove)}
+        {lastSfResultRef.current && (() => {
+          const r = lastSfResultRef.current!;
+          const isFresh = sfResult !== null && sfResult.fen === fen;
+          return (
+            <div className={styles.card} style={{ opacity: isFresh ? 1 : 0.4, transition: 'opacity 0.2s' }}>
+              <div className={styles.cardLabel}>
+                Stockfish 추천
+                {!isFresh && <span className={styles.analyzing}> 분석 중...</span>}
+              </div>
+              <div className={styles.bestMove}>
+                {uciToSan(r.fen, r.bestMove)}
+              </div>
+              <div className={styles.lines}>
+                {r.lines.map((line, i) => (
+                  <div key={i} className={styles.line}>
+                    <span className={styles.lineScore}>
+                      {line.mate !== null
+                        ? `M${Math.abs(line.mate)}`
+                        : `${line.cp > 0 ? '+' : ''}${(line.cp / 100).toFixed(1)}`}
+                    </span>
+                    <span className={styles.lineMoves}>
+                      {uciSequenceToSan(r.fen, line.moves.split(' ').slice(0, 6).join(' '))}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className={styles.lines}>
-              {sfResult.lines.map((line, i) => (
-                <div key={i} className={styles.line}>
-                  <span className={styles.lineScore}>
-                    {line.mate !== null
-                      ? `M${Math.abs(line.mate)}`
-                      : `${line.cp > 0 ? '+' : ''}${(line.cp / 100).toFixed(1)}`}
-                  </span>
-                  <span className={styles.lineMoves}>
-                    {uciSequenceToSan(fen, line.moves.split(' ').slice(0, 6).join(' '))}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {!pgnLoaded && (
           <div className={styles.card}>
