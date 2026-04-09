@@ -385,6 +385,105 @@ function DebugPanel({
   );
 }
 
+// ── Eval Graph ────────────────────────────────────────────
+function EvalGraph({
+  evals,
+  total,
+  isAnalyzing,
+}: {
+  evals: number[];
+  total: number;
+  isAnalyzing: boolean;
+}) {
+  const W = 500;
+  const H = 96;
+  const mid = H / 2;
+  const clamp = (v: number) => Math.max(-6, Math.min(6, v));
+
+  const pts: [number, number][] = evals.map((ev, i) => [
+    (i / Math.max(total - 1, 1)) * W,
+    mid - (clamp(ev) / 6) * mid,
+  ]);
+
+  let fillPath = '';
+  let strokePath = '';
+
+  if (pts.length === 1) {
+    fillPath = `M ${pts[0][0]} ${H} L ${pts[0][0]} ${pts[0][1]} L ${pts[0][0]} ${H} Z`;
+  } else if (pts.length >= 2) {
+    const seg = pts.map(([x, y], i) => {
+      if (i === 0) return `M ${x} ${y}`;
+      const [px, py] = pts[i - 1];
+      const cx = (px + x) / 2;
+      return `C ${cx} ${py} ${cx} ${y} ${x} ${y}`;
+    }).join(' ');
+    fillPath = `M ${pts[0][0]} ${H} L ${pts[0][0]} ${pts[0][1]} ${seg.slice(seg.indexOf('C'))} L ${pts[pts.length - 1][0]} ${H} Z`;
+    strokePath = seg;
+  }
+
+  const lastX = pts.length > 0 ? pts[pts.length - 1][0] : 0;
+  const pct = total > 0 ? Math.round((evals.length / total) * 100) : 0;
+
+  return (
+    <div className={styles.evalGraph}>
+      <div className={styles.evalGraphHeader}>
+        <div>
+          <span className={styles.evalGraphTitle}>Evaluation Flow</span>
+          <p className={styles.evalGraphSubtitle}>수 진행에 따른 엔진 평가 변화</p>
+        </div>
+        {isAnalyzing ? (
+          <span className={styles.evalGraphBadge}>
+            <span className={styles.evalGraphDot} />
+            분석 중 {pct}%
+          </span>
+        ) : (
+          <span className={styles.evalGraphBadgeStatic}>완료</span>
+        )}
+      </div>
+      <div className={styles.evalGraphBody}>
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          style={{ width: '100%', height: '100%', display: 'block' }}
+          preserveAspectRatio="none"
+        >
+          <defs>
+            <linearGradient id="evalFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="rgba(255,255,255,0.5)" />
+              <stop offset="100%" stopColor="rgba(255,255,255,0.02)" />
+            </linearGradient>
+          </defs>
+          {/* 미평가 구간 점선 */}
+          {isAnalyzing && evals.length < total && (
+            <line
+              x1={lastX} y1={mid} x2={W} y2={mid}
+              stroke="rgba(255,255,255,0.1)"
+              strokeWidth={1.5}
+              strokeDasharray="5 5"
+            />
+          )}
+          {/* 백 fill */}
+          {fillPath && <path d={fillPath} fill="url(#evalFill)" />}
+          {/* 중심선 */}
+          <line x1={0} y1={mid} x2={W} y2={mid} stroke="rgba(255,255,255,0.08)" strokeWidth={1} />
+          {/* 커브 stroke */}
+          {strokePath && (
+            <path d={strokePath} fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth={2.2} />
+          )}
+          {/* 분석 중 현재 위치 dot */}
+          {isAnalyzing && pts.length > 0 && (
+            <circle
+              cx={pts[pts.length - 1][0]}
+              cy={pts[pts.length - 1][1]}
+              r={4}
+              fill="#10b981"
+            />
+          )}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 // ── 메인 컴포넌트 ──────────────────────────────────────────
 export interface ChessBoardProps {
   initialFen?: string;
@@ -459,6 +558,7 @@ export default function ChessBoard({
   const [varFenIdx, setVarFenIdx] = useState(0); // index in variation.fens (1 = after first move)
   const [pgnInput, setPgnInput] = useState(initialPgn ?? '');
   const [pgnError, setPgnError] = useState('');
+  const [pgnLoaded, setPgnLoaded] = useState(false);
   const [currentLevel, setCurrentLevel] = useState<'beginner' | 'intermediate'>(level);
   const [aiLastMoveSan, setAiLastMoveSan] = useState('');
 
@@ -466,6 +566,8 @@ export default function ChessBoard({
   const pgnQueueRef = useRef<PgnQueue | null>(null);
   const evalDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const classifyLogRef = useRef<ClassifyLogEntry[]>([]);
+  const evalAccumRef = useRef<number[]>([]);
+  const [evalHistory, setEvalHistory] = useState<{ evals: number[]; total: number } | null>(null);
   const { result: sfResult, isReady, isAnalyzing, evaluate, stop, rawLogRef } = useStockfish();
   const { isBookMove, getOpeningName, bookLogRef } = useOpeningBook();
   const [openingName, setOpeningName] = useState<string | null>(null);
@@ -573,12 +675,14 @@ export default function ChessBoard({
 
     // 다음 FEN 평가
     const evalForGraph = sfResult.eval;
+    evalAccumRef.current.push(evalForGraph);
     queue.nextIdx++;
     if (queue.nextIdx < queue.fens.length) {
-      setPgnProgress(prev => prev ? { done: queue.nextIdx, total: queue.fens.length, evals: [...prev.evals, evalForGraph] } : null);
+      setPgnProgress(prev => prev ? { done: queue.nextIdx, total: queue.fens.length, evals: [...evalAccumRef.current] } : null);
       evaluate(queue.fens[queue.nextIdx], 15, 2000); // 배치 분석: 포지션당 최대 2초
     } else {
       pgnQueueRef.current = null;
+      setEvalHistory({ evals: [...evalAccumRef.current], total: queue.fens.length });
       setPgnProgress(null);
     }
   }, [sfResult, isBookMove, evaluate]);
@@ -804,6 +908,9 @@ export default function ChessBoard({
     setAiLastMoveSan(g.history().at(-1) ?? '');
     // 큐 첫 번째 FEN부터 순차 평가 시작
     console.log('[PGN] starting eval, total fens:', fenHist.length);
+    evalAccumRef.current = [];
+    setEvalHistory(null);
+    setPgnLoaded(true);
     setPgnProgress({ done: 0, total: fenHist.length, evals: [] });
     evaluate(fenHist[0], 15, 2000);
   }, [pgnInput, evaluate]);
@@ -871,6 +978,9 @@ export default function ChessBoard({
     // setAiLastMoveSan('');
     setOpeningName(null);
     setPgnProgress(null);
+    setEvalHistory(null);
+    setPgnLoaded(false);
+    evalAccumRef.current = [];
     setDisplayEval({ eval: 0, mate: null });
     stop();
     evaluate(new Chess().fen()); // 초기 포지션 재분석 (sfResult stale 방지)
@@ -886,6 +996,7 @@ export default function ChessBoard({
   return (
     <div className={styles.root}>
       <div className={styles.boardCol}>
+        <div className={styles.boardCard}>
         <div className={styles.boardRow}>
           <EvalBar value={displayEval.eval} mate={displayEval.mate} />
           {/* data-square 속성 이벤트 델리게이션으로 dnd-kit 우회 */}
@@ -934,67 +1045,16 @@ export default function ChessBoard({
                 },
               }}
             />
-            {pgnProgress && (() => {
-              const W = 500, H = 100, mid = H / 2;
-              const { evals, total } = pgnProgress;
-              const clamp = (v: number) => Math.max(-6, Math.min(6, v));
-              const pts: [number, number][] = evals.map((ev, i) => [
-                (i / Math.max(total - 1, 1)) * W,
-                mid - (clamp(ev) / 6) * mid,
-              ]);
-
-              // smooth cubic bezier (control points at horizontal midpoint)
-              let fill = '', stroke = '';
-              if (pts.length === 1) {
-                fill = `M ${pts[0][0]} ${H} L ${pts[0][0]} ${pts[0][1]} L ${pts[0][0]} ${H} Z`;
-              } else if (pts.length >= 2) {
-                const seg = pts.map(([x, y], i) => {
-                  if (i === 0) return `M ${x} ${y}`;
-                  const [px, py] = pts[i - 1];
-                  const cx = (px + x) / 2;
-                  return `C ${cx} ${py} ${cx} ${y} ${x} ${y}`;
-                }).join(' ');
-                fill = `M ${pts[0][0]} ${H} L ${pts[0][0]} ${pts[0][1]} ${seg.slice(seg.indexOf('C'))} L ${pts[pts.length-1][0]} ${H} Z`;
-                stroke = seg;
-              }
-
-              const lastX = pts.length > 0 ? pts[pts.length - 1][0] : 0;
-
-              return (
-                <div style={{
-                  position: 'absolute', inset: 0, zIndex: 9999,
-                  background: 'rgba(10,10,10,0.88)',
-                  display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', justifyContent: 'center',
-                  gap: '16px', borderRadius: '4px',
-                }}>
-                  <span style={{ fontSize: '11px', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#555' }}>
-                    Evaluating
-                  </span>
-                  <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '78%', height: '90px' }} preserveAspectRatio="none">
-                    {/* 배경 */}
-                    <rect x={0} y={0} width={W} height={H} fill="#1a1a1a" rx={6} />
-                    {/* 미평가 구간 - flat center */}
-                    {evals.length < total && (
-                      <line x1={lastX} y1={mid} x2={W} y2={mid} stroke="#2a2a2a" strokeWidth={1.5} strokeDasharray="3 3" />
-                    )}
-                    {/* 흰 fill (백 유리 = 위, 흑 유리 = 아래) */}
-                    {fill && <path d={fill} fill="rgba(255,255,255,0.92)" />}
-                    {/* 중심선 */}
-                    <line x1={0} y1={mid} x2={lastX || W} y2={mid} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
-                    {/* 커브 stroke */}
-                    {stroke && <path d={stroke} fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth={1.5} />}
-                    {/* 현재 평가 중인 위치 표시 */}
-                    {pts.length > 0 && (
-                      <circle cx={pts[pts.length-1][0]} cy={pts[pts.length-1][1]} r={3} fill="#1D9E75" />
-                    )}
-                  </svg>
-                  <span style={{ fontSize: '10px', color: '#444', letterSpacing: '0.1em' }}>
-                    {pgnProgress.done} / {pgnProgress.total}
-                  </span>
-                </div>
-              );
-            })()}
+            {/* 분석 중 — 보드 위 오버레이 */}
+            {pgnProgress && (
+              <div className={styles.evalOverlay}>
+                <EvalGraph
+                  evals={pgnProgress.evals}
+                  total={pgnProgress.total}
+                  isAnalyzing={true}
+                />
+              </div>
+            )}
           </div>
         </div>
         <div className={styles.statusBar}>
@@ -1006,6 +1066,16 @@ export default function ChessBoard({
           </span>
           {currentLabel && <LabelBadge label={currentLabel} />}
         </div>
+        </div>{/* /boardCard */}
+
+        {/* 분석 완료 후 — 보드 아래 그래프 */}
+        {!pgnProgress && evalHistory && (
+          <EvalGraph
+            evals={evalHistory.evals}
+            total={evalHistory.total}
+            isAnalyzing={false}
+          />
+        )}
       </div>
 
       <div className={styles.panel}>
@@ -1032,32 +1102,23 @@ export default function ChessBoard({
           </div>
         )}
 
-        <div className={styles.card}>
-          <div className={styles.cardLabel}>PGN 붙여넣기</div>
-          <textarea
-            className={styles.pgnInput}
-            value={pgnInput}
-            onChange={e => setPgnInput(e.target.value)}
-            placeholder="1. e4 e5 2. Nf3 Nc6 3. Bb5..."
-            rows={4}
-          />
-          {pgnError && <p className={styles.error}>{pgnError}</p>}
-          <div className={styles.btnRow}>
-            <button className={styles.btnPrimary} onClick={loadPgn}>불러오기</button>
-            <button className={styles.btn} onClick={reset}>초기화</button>
+        {!pgnLoaded && (
+          <div className={styles.card}>
+            <div className={styles.cardLabel}>PGN 붙여넣기</div>
+            <textarea
+              className={styles.pgnInput}
+              value={pgnInput}
+              onChange={e => setPgnInput(e.target.value)}
+              placeholder="1. e4 e5 2. Nf3 Nc6 3. Bb5..."
+              rows={4}
+            />
+            {pgnError && <p className={styles.error}>{pgnError}</p>}
+            <div className={styles.btnRow}>
+              <button className={styles.btnPrimary} onClick={loadPgn}>불러오기</button>
+              <button className={styles.btn} onClick={reset}>초기화</button>
+            </div>
           </div>
-        </div>
-
-        <div className={styles.levelToggle}>
-          <button
-            className={`${styles.levelBtn} ${currentLevel === 'beginner' ? styles.levelActive : ''}`}
-            onClick={() => setCurrentLevel('beginner')}
-          >입문자</button>
-          <button
-            className={`${styles.levelBtn} ${currentLevel === 'intermediate' ? styles.levelActive : ''}`}
-            onClick={() => setCurrentLevel('intermediate')}
-          >중급자</button>
-        </div>
+        )}
 
         <div className={styles.card}>
           <div className={styles.cardLabel}>
@@ -1084,6 +1145,12 @@ export default function ChessBoard({
           label={currentLabel}
           level={currentLevel}
         />
+
+        {pgnLoaded && (
+          <button className={styles.btn} onClick={reset} style={{ alignSelf: 'flex-start' }}>
+            초기화
+          </button>
+        )}
       </div>
 
     </div>

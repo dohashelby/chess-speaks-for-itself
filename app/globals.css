@@ -59,4 +59,12 @@
 
 * {
   font-family: 'Pretendard', sans-serif;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #050505;
+  color: #e8e8e8;
 }

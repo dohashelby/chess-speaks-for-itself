@@ -1,342 +1,45 @@
-/* components/ChessBoard.module.css — v2 */
+/* components/ChessBoard.module.css — v3 glassmorphic */
 
 /* ── 레이아웃 ── */
 .root {
   display: grid;
-  grid-template-columns: minmax(0, 580px) 300px;
+  grid-template-columns: minmax(0, 600px) 320px;
   gap: 20px;
-  padding: 20px;
+  padding: 24px;
   font-family: 'Pretendard', sans-serif;
-  background: #0f0f0f;
   color: #e8e8e8;
-  min-height: 100vh;
+  min-height: calc(100vh - 65px);
   justify-content: center;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .root {
     grid-template-columns: 1fr;
     padding: 12px;
   }
 }
 
-/* ── SF 디버그 패널 ── */
-.debugPanel {
-  background: #0a0a0a;
-  border: 0.5px solid #2a2a2a;
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  max-height: calc(100vh - 40px);
-  min-width: 0;
-  overflow: hidden;
-}
-
-.debugHeader {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 12px;
-  border-bottom: 0.5px solid #2a2a2a;
-  flex-shrink: 0;
-}
-
-.debugDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #e04040;
-  animation: pulse 1.2s infinite;
-}
-
-.debugTitle {
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #555;
-}
-
-.debugCount {
-  margin-left: auto;
-  font-size: 9px;
-  color: #444;
-}
-
-.debugBody {
-  flex: 1;
-  overflow: auto;
-  padding: 6px 0;
-  scrollbar-width: thin;
-  scrollbar-color: #333 transparent;
-}
-
-.debugLine {
-  padding: 1px 12px;
-  font-size: 10px;
-  font-family: 'Pretendard', sans-serif;
-  color: #555;
-  white-space: nowrap;
-  line-height: 1.6;
-}
-
-.debugLine:hover {
-  background: #141414;
-  color: #888;
-}
-
-.debugIdx {
-  display: inline-block;
-  width: 28px;
-  color: #333;
-  text-align: right;
-  margin-right: 8px;
-  user-select: none;
-}
-
-.debugBest {
-  color: #1baca6;
-  font-weight: 600;
-}
-
-.debugInfo {
-  color: #6a6a6a;
-}
-
-/* 디버그 탭 */
-.debugTab {
-  padding: 4px 8px;
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  font-family: 'Pretendard', sans-serif;
-  background: transparent;
-  border: none;
-  color: #444;
-  cursor: pointer;
-  transition: color 0.1s;
-}
-
-.debugTab:hover {
-  color: #888;
-}
-
-.debugTabActive {
-  color: #e8e8e8;
-  border-bottom: 1px solid #e8e8e8;
-}
-
-/* Book 로그 */
-.debugBookEntry {
-  padding: 8px 12px;
-  border-bottom: 0.5px solid #1a1a1a;
-  font-family: 'Pretendard', sans-serif;
-}
-
-.debugBookEntry:hover {
-  background: #111;
-}
-
-.debugBookHeader {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.debugBookMatch {
-  font-size: 10px;
-  font-weight: 600;
-  color: #a08060;
-}
-
-.debugBookMiss {
-  font-size: 10px;
-  color: #444;
-}
-
-.debugBookGames {
-  font-size: 9px;
-  color: #444;
-  margin-left: auto;
-}
-
-.debugBookFen {
-  font-size: 9px;
-  color: #333;
-  margin-bottom: 2px;
-}
-
-.debugBookPlayed {
-  font-size: 10px;
-  color: #555;
-  margin-bottom: 4px;
-}
-
-.debugBookMoves {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.debugBookMovePlayed {
-  background: #1e1810 !important;
-  border-left: 2px solid #a08060;
-}
-
-.debugBookMovePlayed .debugBookMoveSan {
-  color: #a08060;
-}
-
-.debugBookError {
-  font-size: 9px;
-  color: #e04040;
-  margin: 2px 0;
-}
-
-.debugBookRaw {
-  margin: 4px 0;
-}
-
-.debugBookRawHeader {
-  font-size: 9px;
-  color: #555;
-  padding: 2px 4px;
-  background: #111;
-  border-radius: 2px;
-  display: inline-block;
-}
-
-.debugBookMoveRow {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 4px;
-  font-size: 9px;
-  border-radius: 2px;
-}
-
-.debugBookMoveRow:hover {
-  background: #1a1a1a;
-}
-
-.debugBookMoveSan {
-  font-weight: 600;
-  color: #888;
-  min-width: 36px;
-}
-
-.debugBookMoveUci {
-  color: #444;
-  min-width: 40px;
-}
-
-.debugBookMoveGames {
-  color: #666;
-  min-width: 40px;
-  text-align: right;
-}
-
-.debugBookMoveWDL {
-  color: #444;
-  font-size: 8px;
-  min-width: 60px;
-}
-
-/* Classify 로그 */
-.debugClassifyLabel {
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.debugClassifyReason {
-  font-size: 10px;
-  color: #999;
-  margin: 4px 0;
-  line-height: 1.5;
-}
-
-.debugClassifyDebug {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-}
-
-.debugClassifyKV {
-  display: inline-flex;
-  gap: 2px;
-  font-size: 9px;
-  padding: 1px 4px;
-  border-radius: 2px;
-  background: #111;
-}
-
-.debugClassifyKey {
-  color: #555;
-}
-
-.debugClassifyVal {
-  color: #888;
-}
-
-/* ── PGN 평가 오버레이 ── */
-.evalOverlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.75);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  z-index: 9999;
-  border-radius: 4px;
-}
-
-.evalOverlayText {
-  font-size: 13px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #ffffff;
-  font-family: 'Pretendard', sans-serif;
-  animation: evalBlink 1s infinite;
-}
-
-@keyframes evalBlink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-
-.evalProgressTrack {
-  width: 60%;
-  height: 4px;
-  background: #333;
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.evalProgressBar {
-  height: 100%;
-  background: #1D9E75;
-  border-radius: 2px;
-  transition: width 0.25s ease;
-}
-
-.evalProgressCount {
-  font-size: 11px;
-  color: #ccc;
-  font-family: 'Pretendard', sans-serif;
-}
-
-/* ── 보드 컬럼 ── */
+/* ── Board column ── */
 .boardCol {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  align-items: flex-start;
+  gap: 16px;
+  align-items: stretch;
+}
+
+/* glass wrapper around board */
+.boardCard {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 28px;
+  padding: 20px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 .boardRow {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: stretch;
   width: 100%;
 }
@@ -347,9 +50,11 @@
   min-width: 0;
   position: relative;
   touch-action: none;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
-/* ── 수 라벨 뱃지 (squareRenderer 내부 — 칸 기준 relative) ── */
+/* ── 수 라벨 뱃지 (squareRenderer 내부) ── */
 .moveLabelBadge {
   position: absolute;
   top: 0;
@@ -366,7 +71,7 @@
   color: #fff;
   z-index: 10;
   pointer-events: none;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.55);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
   animation: labelPop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
@@ -374,55 +79,6 @@
   from { transform: translate(30%, -30%) scale(0.3); opacity: 0; }
   to   { transform: translate(30%, -30%) scale(1);   opacity: 1; }
 }
-
-/* ── 칸 ── */
-.square {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: filter 0.08s;
-}
-
-.square:hover {
-  filter: brightness(1.12);
-}
-
-.light {
-  background: #f0d9b5;
-}
-
-.dark {
-  background: #b58863;
-}
-
-.selected {
-  background: #f6f669 !important;
-}
-
-.lastMove {
-  background: #cdd26a !important;
-}
-
-.dark.lastMove {
-  background: #aaa23a !important;
-}
-
-.legalCapture {
-  outline: 3px solid rgba(0, 0, 0, 0.35);
-  outline-offset: -3px;
-}
-
-/* 이동 가능 점 */
-.legalDot {
-  width: 30%;
-  height: 30%;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.22);
-  pointer-events: none;
-}
-
 
 /* ── Eval Bar ── */
 .evalWrap {
@@ -433,37 +89,35 @@
 }
 
 .evalBar {
-  width: 14px;
+  width: 12px;
   flex: 1;
-  background: #1a1a1a;
-  border: 0.5px solid #333;
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
   overflow: hidden;
   display: flex;
   flex-direction: column-reverse;
 }
 
 .evalWhite {
-  background: #f0f0f0;
+  background: rgba(255, 255, 255, 0.88);
   transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: 0 0 3px 3px;
+  border-radius: 0 0 6px 6px;
 }
 
 .evalLabel {
   font-size: 10px;
-  color: #888;
+  color: rgba(255, 255, 255, 0.35);
   font-family: 'Pretendard', sans-serif;
   letter-spacing: 0.02em;
 }
 
-
-/* ── 상태 바 ── */
+/* ── Status bar ── */
 .statusBar {
   margin-top: 8px;
-  font-size: 11px;
-  color: #666;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
   font-family: 'Pretendard', sans-serif;
-  padding-left: 22px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -474,9 +128,9 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  border: 0.5px solid;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid;
   font-size: 11px;
   font-weight: 600;
   font-family: 'Pretendard', sans-serif;
@@ -490,7 +144,7 @@
 }
 
 .analyzing {
-  color: #1D9E75;
+  color: #10b981;
   animation: blink 1s infinite;
 }
 
@@ -500,31 +154,33 @@
 }
 
 .sfLoading {
-  color: #555;
+  color: rgba(255, 255, 255, 0.3);
 }
 
-/* ── 패널 ── */
+/* ── Panel ── */
 .panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
-/* ── 카드 ── */
+/* ── Card ── */
 .card {
-  background: #161616;
-  border: 0.5px solid #2a2a2a;
-  border-radius: 8px;
-  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  padding: 16px 18px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .cardLabel {
-  font-size: 9px;
-  letter-spacing: 0.12em;
+  font-size: 10px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #555;
-  margin-bottom: 8px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-bottom: 10px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -532,53 +188,47 @@
 
 .openingName {
   font-size: 11px;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   text-transform: none;
-  color: #a08060;
+  color: #c4965a;
   font-style: italic;
 }
 
-/* ── 최선수 ── */
+/* ── Best move ── */
 .bestMove {
-  font-size: 22px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   color: #e8e8e8;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
-.arrow {
-  color: #444;
-  margin: 0 4px;
-  font-size: 16px;
-}
-
-/* MultiPV 라인 */
+/* MultiPV lines */
 .lines {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .line {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  padding: 4px 0;
-  border-top: 0.5px solid #222;
+  padding: 6px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .lineScore {
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   min-width: 36px;
-  color: #1D9E75;
+  color: #10b981;
   font-family: 'Pretendard', sans-serif;
 }
 
 .lineMoves {
-  font-size: 10px;
-  color: #555;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
   font-family: 'Pretendard', sans-serif;
   white-space: nowrap;
   overflow: hidden;
@@ -588,57 +238,62 @@
 /* ── PGN ── */
 .pgnInput {
   width: 100%;
-  background: #0a0a0a;
-  border: 0.5px solid #2a2a2a;
-  border-radius: 5px;
-  padding: 8px;
-  font-size: 11px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 10px 12px;
+  font-size: 12px;
   font-family: 'Pretendard', sans-serif;
   color: #e8e8e8;
   resize: vertical;
   outline: none;
   transition: border-color 0.15s;
+  box-sizing: border-box;
 }
 
 .pgnInput:focus {
-  border-color: #444;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.pgnInput::placeholder {
+  color: rgba(255, 255, 255, 0.2);
 }
 
 .error {
   font-size: 11px;
-  color: #e24b4a;
-  margin-top: 4px;
+  color: #f87171;
+  margin-top: 6px;
 }
 
 .btnRow {
   display: flex;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .btn {
-  padding: 6px 14px;
-  font-size: 11px;
+  padding: 8px 16px;
+  font-size: 12px;
   font-family: 'Pretendard', sans-serif;
-  border: 0.5px solid #333;
-  border-radius: 5px;
-  background: transparent;
-  color: #aaa;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.65);
   cursor: pointer;
-  transition: all 0.1s;
+  transition: all 0.15s;
 }
 
 .btn:hover {
-  background: #1e1e1e;
+  background: rgba(255, 255, 255, 0.1);
   color: #e8e8e8;
 }
 
 .btnPrimary {
   composes: btn;
-  background: #e8e8e8;
+  background: rgba(255, 255, 255, 0.92);
   color: #0f0f0f;
-  border-color: #e8e8e8;
-  font-weight: 500;
+  border-color: transparent;
+  font-weight: 600;
 }
 
 .btnPrimary:hover {
@@ -646,62 +301,66 @@
   color: #0f0f0f;
 }
 
-/* ── 수준 토글 ── */
+/* ── Level toggle ── */
 .levelToggle {
   display: flex;
-  gap: 0;
-  border: 0.5px solid #2a2a2a;
-  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
   overflow: hidden;
+  padding: 4px;
+  gap: 4px;
 }
 
 .levelBtn {
   flex: 1;
-  padding: 7px;
-  font-size: 11px;
+  padding: 8px;
+  font-size: 12px;
   font-family: 'Pretendard', sans-serif;
   background: transparent;
   border: none;
-  color: #555;
+  border-radius: 14px;
+  color: rgba(255, 255, 255, 0.4);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.2s;
 }
 
 .levelBtn:hover {
-  color: #aaa;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .levelActive {
-  background: #1e1e1e;
-  color: #e8e8e8;
+  background: #ffffff;
+  color: #0f0f0f !important;
+  font-weight: 600;
 }
 
-/* ── 수순 테이블 ── */
+/* ── Move table ── */
 .moveTable {
   display: flex;
   flex-direction: column;
-  max-height: 160px;
+  max-height: 200px;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: #333 transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
   gap: 1px;
 }
 
 .moveRow {
   display: grid;
-  grid-template-columns: 20px 1fr 1fr;
+  grid-template-columns: 22px 1fr 1fr;
   align-items: center;
   gap: 2px;
-  border-radius: 3px;
+  border-radius: 8px;
 }
 
 .moveRow:nth-child(odd) {
-  background: #111;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .moveNum {
   font-size: 10px;
-  color: #444;
+  color: rgba(255, 255, 255, 0.2);
   text-align: right;
   padding-right: 4px;
   font-family: 'Pretendard', sans-serif;
@@ -712,9 +371,9 @@
   display: flex;
   align-items: center;
   gap: 3px;
-  padding: 4px 6px;
+  padding: 5px 8px;
   border: none;
-  border-radius: 3px;
+  border-radius: 8px;
   background: transparent;
   cursor: pointer;
   text-align: left;
@@ -722,7 +381,7 @@
 }
 
 .moveCell:hover:not(:disabled) {
-  background: #1e1e1e;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .moveCell:disabled {
@@ -736,7 +395,7 @@
 .moveSan {
   font-size: 12px;
   font-family: 'Pretendard', sans-serif;
-  color: #aaa;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .moveSymbol {
@@ -750,10 +409,10 @@
 }
 
 .moveActive {
-  background: #1D9E75 !important;
+  background: #10b981 !important;
 }
 
-/* ── Variation 인라인 표시 ── */
+/* ── Variation ── */
 .variationRow {
   grid-column: 1 / -1;
   padding: 3px 8px 5px 24px;
@@ -761,84 +420,84 @@
   flex-wrap: wrap;
   gap: 2px;
   align-items: baseline;
-  border-left: 2px solid #2a2a2a;
+  border-left: 2px solid rgba(255, 255, 255, 0.08);
   margin: 1px 0 1px 8px;
 }
 
 .varEllipsis {
-  color: #444;
+  color: rgba(255, 255, 255, 0.2);
   font-size: 11px;
   margin-right: 3px;
   flex-shrink: 0;
 }
 
 .varNum {
-  color: #555;
+  color: rgba(255, 255, 255, 0.25);
   font-size: 11px;
   margin-right: 1px;
 }
 
 .varMove {
-  color: #777;
+  color: rgba(255, 255, 255, 0.45);
   font-style: italic;
   font-size: 11px;
   background: none;
   border: none;
   cursor: pointer;
   padding: 1px 4px;
-  border-radius: 3px;
+  border-radius: 4px;
   font-family: inherit;
 }
 
 .varMove:hover {
-  color: #bbb;
-  background: #1a1a1a;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .varMoveActive {
   color: #e8e8e8 !important;
-  background: #1a4a2a !important;
+  background: rgba(16, 185, 129, 0.2) !important;
 }
 
 .movePlaceholder {
   font-size: 11px;
-  color: #444;
+  color: rgba(255, 255, 255, 0.2);
   font-style: italic;
 }
 
 /* ── AI 해설 ── */
 .aiBox {
-  background: #161616;
-  border: 0.5px solid #2a2a2a;
-  border-radius: 8px;
-  padding: 12px 14px;
-  flex: 1;
-  min-height: 120px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  padding: 16px 18px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .aiHeader {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 12px;
   flex-wrap: wrap;
 }
 
 .explainBtn {
   margin-left: auto;
-  padding: 4px 10px;
-  font-size: 10px;
+  padding: 5px 14px;
+  font-size: 11px;
   font-family: 'Pretendard', sans-serif;
-  border: 0.5px solid #1D9E75;
-  border-radius: 4px;
-  background: transparent;
-  color: #1D9E75;
+  border: 1px solid rgba(16, 185, 129, 0.6);
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
   cursor: pointer;
-  transition: all 0.1s;
+  transition: all 0.15s;
 }
 
 .explainBtn:hover {
-  background: #1D9E75;
+  background: #10b981;
   color: #0f0f0f;
 }
 
@@ -853,7 +512,8 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #1D9E75;
+  background: #10b981;
+  flex-shrink: 0;
 }
 
 .aiDotPulse {
@@ -866,15 +526,15 @@
 }
 
 .aiLabel {
-  font-size: 9px;
-  letter-spacing: 0.12em;
+  font-size: 10px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #555;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .aiDepth {
-  font-size: 9px;
-  color: #444;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.2);
   margin-left: auto;
   font-family: 'Pretendard', sans-serif;
 }
@@ -882,13 +542,370 @@
 .aiText {
   font-size: 13px;
   line-height: 1.8;
-  color: #c8c8c8;
+  color: rgba(255, 255, 255, 0.72);
   font-family: 'Pretendard', sans-serif;
   white-space: pre-wrap;
 }
 
 .aiPlaceholder {
-  color: #444;
+  color: rgba(255, 255, 255, 0.22);
   font-style: italic;
   font-family: 'Pretendard', sans-serif;
+}
+
+/* ── Eval Overlay (분석 중 보드 위) ── */
+.evalOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(5, 5, 5, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.evalOverlay > .evalGraph {
+  width: 100%;
+  background: transparent;
+  border: none;
+  backdrop-filter: none;
+  padding: 0;
+}
+
+/* ── Eval Graph ── */
+.evalGraph {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  padding: 16px 18px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.evalGraphHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  gap: 10px;
+}
+
+.evalGraphTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e8e8e8;
+  letter-spacing: -0.01em;
+  display: block;
+}
+
+.evalGraphSubtitle {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  margin-top: 3px;
+}
+
+.evalGraphBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 999px;
+  padding: 4px 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.evalGraphDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: pulse 1.2s infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.evalGraphBadgeStatic {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 4px 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.evalGraphBody {
+  height: 100px;
+  width: 100%;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+  padding: 6px;
+}
+
+/* ── Debug panel ── */
+.debugPanel {
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 40px);
+  min-width: 0;
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+}
+
+.debugHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  flex-shrink: 0;
+}
+
+.debugDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e04040;
+  animation: pulse 1.2s infinite;
+}
+
+.debugTitle {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.debugCount {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.debugBody {
+  flex: 1;
+  overflow: auto;
+  padding: 6px 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+}
+
+.debugLine {
+  padding: 1px 12px;
+  font-size: 10px;
+  font-family: 'Pretendard', sans-serif;
+  color: rgba(255, 255, 255, 0.3);
+  white-space: nowrap;
+  line-height: 1.6;
+}
+
+.debugLine:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.debugIdx {
+  display: inline-block;
+  width: 28px;
+  color: rgba(255, 255, 255, 0.15);
+  text-align: right;
+  margin-right: 8px;
+  user-select: none;
+}
+
+.debugBest {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.debugInfo {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.debugTab {
+  padding: 4px 8px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  font-family: 'Pretendard', sans-serif;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  transition: color 0.1s;
+}
+
+.debugTab:hover {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.debugTabActive {
+  color: #e8e8e8;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.debugBookEntry {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  font-family: 'Pretendard', sans-serif;
+}
+
+.debugBookEntry:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.debugBookHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.debugBookMatch {
+  font-size: 10px;
+  font-weight: 600;
+  color: #c4965a;
+}
+
+.debugBookMiss {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.debugBookGames {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.2);
+  margin-left: auto;
+}
+
+.debugBookFen {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.15);
+  margin-bottom: 2px;
+}
+
+.debugBookPlayed {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  margin-bottom: 4px;
+}
+
+.debugBookMoves {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.debugBookMovePlayed {
+  background: rgba(196, 150, 90, 0.1) !important;
+  border-left: 2px solid #c4965a;
+}
+
+.debugBookMovePlayed .debugBookMoveSan {
+  color: #c4965a;
+}
+
+.debugBookError {
+  font-size: 9px;
+  color: #f87171;
+  margin: 2px 0;
+}
+
+.debugBookRaw {
+  margin: 4px 0;
+}
+
+.debugBookRawHeader {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.3);
+  padding: 2px 4px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.debugBookMoveRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  font-size: 9px;
+  border-radius: 2px;
+}
+
+.debugBookMoveRow:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.debugBookMoveSan {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  min-width: 36px;
+}
+
+.debugBookMoveUci {
+  color: rgba(255, 255, 255, 0.25);
+  min-width: 40px;
+}
+
+.debugBookMoveGames {
+  color: rgba(255, 255, 255, 0.35);
+  min-width: 40px;
+  text-align: right;
+}
+
+.debugBookMoveWDL {
+  color: rgba(255, 255, 255, 0.2);
+  font-size: 8px;
+  min-width: 60px;
+}
+
+.debugClassifyLabel {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.debugClassifyReason {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 4px 0;
+  line-height: 1.5;
+}
+
+.debugClassifyDebug {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.debugClassifyKV {
+  display: inline-flex;
+  gap: 2px;
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.debugClassifyKey {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.debugClassifyVal {
+  color: rgba(255, 255, 255, 0.5);
 }
